@@ -1,0 +1,1406 @@
+{
+  "0": {
+    "family": [
+      94,
+      66,
+      82
+    ],
+    "work_school": [
+      32,
+      34,
+      7
+    ],
+    "community": [
+      77,
+      48,
+      21
+    ]
+  },
+  "1": {
+    "family": [
+      10
+    ],
+    "work_school": [
+      25
+    ],
+    "community": [
+      91,
+      16,
+      4
+    ]
+  },
+  "2": {
+    "family": [
+      11
+    ],
+    "work_school": [
+      26,
+      45
+    ],
+    "community": [
+      70
+    ]
+  },
+  "3": {
+    "family": [
+      23,
+      5,
+      33
+    ],
+    "work_school": [
+      43,
+      56,
+      93
+    ],
+    "community": [
+      91,
+      55,
+      59
+    ]
+  },
+  "4": {
+    "family": [
+      99,
+      97
+    ],
+    "work_school": [
+      32
+    ],
+    "community": [
+      92
+    ]
+  },
+  "5": {
+    "family": [
+      11,
+      69,
+      8
+    ],
+    "work_school": [
+      42
+    ],
+    "community": [
+      73,
+      97,
+      56
+    ]
+  },
+  "6": {
+    "family": [
+      57,
+      26,
+      94
+    ],
+    "work_school": [
+      86,
+      77
+    ],
+    "community": [
+      71,
+      34,
+      22
+    ]
+  },
+  "7": {
+    "family": [
+      47
+    ],
+    "work_school": [
+      71,
+      37,
+      99
+    ],
+    "community": [
+      10,
+      34
+    ]
+  },
+  "8": {
+    "family": [
+      68,
+      91
+    ],
+    "work_school": [
+      46
+    ],
+    "community": [
+      57
+    ]
+  },
+  "9": {
+    "family": [
+      28,
+      49,
+      14
+    ],
+    "work_school": [
+      6,
+      87,
+      71
+    ],
+    "community": [
+      45,
+      30
+    ]
+  },
+  "10": {
+    "family": [
+      1,
+      75,
+      0
+    ],
+    "work_school": [
+      78
+    ],
+    "community": [
+      66,
+      61,
+      52
+    ]
+  },
+  "11": {
+    "family": [
+      35,
+      4,
+      65
+    ],
+    "work_school": [
+      42,
+      81
+    ],
+    "community": [
+      14,
+      64,
+      68
+    ]
+  },
+  "12": {
+    "family": [
+      94,
+      45
+    ],
+    "work_school": [
+      65,
+      3,
+      96
+    ],
+    "community": [
+      87
+    ]
+  },
+  "13": {
+    "family": [
+      26,
+      8
+    ],
+    "work_school": [
+      39
+    ],
+    "community": [
+      71,
+      63
+    ]
+  },
+  "14": {
+    "family": [
+      0,
+      4,
+      29
+    ],
+    "work_school": [
+      91,
+      78
+    ],
+    "community": [
+      30,
+      75
+    ]
+  },
+  "15": {
+    "family": [
+      6,
+      3,
+      19
+    ],
+    "work_school": [
+      33,
+      92,
+      46
+    ],
+    "community": [
+      52
+    ]
+  },
+  "16": {
+    "family": [
+      31,
+      35,
+      82
+    ],
+    "work_school": [
+      67,
+      21
+    ],
+    "community": [
+      77,
+      30
+    ]
+  },
+  "17": {
+    "family": [
+      22
+    ],
+    "work_school": [
+      14,
+      77
+    ],
+    "community": [
+      16
+    ]
+  },
+  "18": {
+    "family": [
+      40,
+      38,
+      14
+    ],
+    "work_school": [
+      32,
+      68
+    ],
+    "community": [
+      45
+    ]
+  },
+  "19": {
+    "family": [
+      12
+    ],
+    "work_school": [
+      14
+    ],
+    "community": [
+      93,
+      89,
+      66
+    ]
+  },
+  "20": {
+    "family": [
+      65
+    ],
+    "work_school": [
+      62
+    ],
+    "community": [
+      80,
+      71
+    ]
+  },
+  "21": {
+    "family": [
+      15,
+      66
+    ],
+    "work_school": [
+      43,
+      48
+    ],
+    "community": [
+      20
+    ]
+  },
+  "22": {
+    "family": [
+      49
+    ],
+    "work_school": [
+      7,
+      49,
+      95
+    ],
+    "community": [
+      75
+    ]
+  },
+  "23": {
+    "family": [
+      3,
+      17
+    ],
+    "work_school": [
+      16,
+      7,
+      13
+    ],
+    "community": [
+      32,
+      83,
+      39
+    ]
+  },
+  "24": {
+    "family": [
+      7,
+      30
+    ],
+    "work_school": [
+      76
+    ],
+    "community": [
+      3,
+      13
+    ]
+  },
+  "25": {
+    "family": [
+      56
+    ],
+    "work_school": [
+      23,
+      77,
+      81
+    ],
+    "community": [
+      67,
+      54,
+      86
+    ]
+  },
+  "26": {
+    "family": [
+      15
+    ],
+    "work_school": [
+      55
+    ],
+    "community": [
+      35,
+      99
+    ]
+  },
+  "27": {
+    "family": [
+      55,
+      18,
+      88
+    ],
+    "work_school": [
+      23,
+      3,
+      2
+    ],
+    "community": [
+      2
+    ]
+  },
+  "28": {
+    "family": [
+      34,
+      32,
+      35
+    ],
+    "work_school": [
+      15,
+      18,
+      13
+    ],
+    "community": [
+      73,
+      59
+    ]
+  },
+  "29": {
+    "family": [
+      10,
+      50
+    ],
+    "work_school": [
+      40,
+      23
+    ],
+    "community": [
+      97,
+      61
+    ]
+  },
+  "30": {
+    "family": [
+      93
+    ],
+    "work_school": [
+      66
+    ],
+    "community": [
+      51,
+      57
+    ]
+  },
+  "31": {
+    "family": [
+      39,
+      65,
+      11
+    ],
+    "work_school": [
+      96,
+      77
+    ],
+    "community": [
+      44
+    ]
+  },
+  "32": {
+    "family": [
+      24
+    ],
+    "work_school": [
+      36,
+      14,
+      72
+    ],
+    "community": [
+      46
+    ]
+  },
+  "33": {
+    "family": [
+      22,
+      85,
+      27
+    ],
+    "work_school": [
+      27,
+      13,
+      85
+    ],
+    "community": [
+      32
+    ]
+  },
+  "34": {
+    "family": [
+      7,
+      51
+    ],
+    "work_school": [
+      49,
+      39
+    ],
+    "community": [
+      64
+    ]
+  },
+  "35": {
+    "family": [
+      8,
+      60,
+      38
+    ],
+    "work_school": [
+      18,
+      90
+    ],
+    "community": [
+      44
+    ]
+  },
+  "36": {
+    "family": [
+      30,
+      18
+    ],
+    "work_school": [
+      98
+    ],
+    "community": [
+      96,
+      2
+    ]
+  },
+  "37": {
+    "family": [
+      83,
+      29,
+      9
+    ],
+    "work_school": [
+      9
+    ],
+    "community": [
+      81,
+      85
+    ]
+  },
+  "38": {
+    "family": [
+      61,
+      76
+    ],
+    "work_school": [
+      28,
+      42,
+      41
+    ],
+    "community": [
+      62,
+      36,
+      30
+    ]
+  },
+  "39": {
+    "family": [
+      53
+    ],
+    "work_school": [
+      18,
+      90
+    ],
+    "community": [
+      46
+    ]
+  },
+  "40": {
+    "family": [
+      55,
+      59,
+      8
+    ],
+    "work_school": [
+      21,
+      71,
+      99
+    ],
+    "community": [
+      37
+    ]
+  },
+  "41": {
+    "family": [
+      72
+    ],
+    "work_school": [
+      74,
+      72,
+      32
+    ],
+    "community": [
+      70,
+      28
+    ]
+  },
+  "42": {
+    "family": [
+      16,
+      66,
+      85
+    ],
+    "work_school": [
+      46,
+      92,
+      97
+    ],
+    "community": [
+      76
+    ]
+  },
+  "43": {
+    "family": [
+      73,
+      29
+    ],
+    "work_school": [
+      78,
+      67,
+      25
+    ],
+    "community": [
+      40
+    ]
+  },
+  "44": {
+    "family": [
+      99,
+      82
+    ],
+    "work_school": [
+      8,
+      32,
+      78
+    ],
+    "community": [
+      88
+    ]
+  },
+  "45": {
+    "family": [
+      72,
+      13,
+      68
+    ],
+    "work_school": [
+      61,
+      16
+    ],
+    "community": [
+      73
+    ]
+  },
+  "46": {
+    "family": [
+      31,
+      22
+    ],
+    "work_school": [
+      48
+    ],
+    "community": [
+      84,
+      9
+    ]
+  },
+  "47": {
+    "family": [
+      11
+    ],
+    "work_school": [
+      52
+    ],
+    "community": [
+      78,
+      54
+    ]
+  },
+  "48": {
+    "family": [
+      13,
+      99,
+      72
+    ],
+    "work_school": [
+      68
+    ],
+    "community": [
+      23
+    ]
+  },
+  "49": {
+    "family": [
+      59,
+      13
+    ],
+    "work_school": [
+      0,
+      89
+    ],
+    "community": [
+      37,
+      48
+    ]
+  },
+  "50": {
+    "family": [
+      68,
+      44,
+      94
+    ],
+    "work_school": [
+      28,
+      66
+    ],
+    "community": [
+      20,
+      44,
+      12
+    ]
+  },
+  "51": {
+    "family": [
+      65,
+      89
+    ],
+    "work_school": [
+      46,
+      57,
+      25
+    ],
+    "community": [
+      83
+    ]
+  },
+  "52": {
+    "family": [
+      42
+    ],
+    "work_school": [
+      58,
+      68,
+      4
+    ],
+    "community": [
+      83,
+      28
+    ]
+  },
+  "53": {
+    "family": [
+      42,
+      56
+    ],
+    "work_school": [
+      92,
+      42,
+      40
+    ],
+    "community": [
+      23,
+      51,
+      86
+    ]
+  },
+  "54": {
+    "family": [
+      96,
+      3,
+      73
+    ],
+    "work_school": [
+      28
+    ],
+    "community": [
+      83,
+      90
+    ]
+  },
+  "55": {
+    "family": [
+      90,
+      64
+    ],
+    "work_school": [
+      63
+    ],
+    "community": [
+      45
+    ]
+  },
+  "56": {
+    "family": [
+      31,
+      57,
+      16
+    ],
+    "work_school": [
+      58
+    ],
+    "community": [
+      22
+    ]
+  },
+  "57": {
+    "family": [
+      55,
+      74,
+      22
+    ],
+    "work_school": [
+      81,
+      12
+    ],
+    "community": [
+      19,
+      33,
+      85
+    ]
+  },
+  "58": {
+    "family": [
+      31,
+      82,
+      0
+    ],
+    "work_school": [
+      89,
+      97,
+      27
+    ],
+    "community": [
+      44,
+      92,
+      26
+    ]
+  },
+  "59": {
+    "family": [
+      70
+    ],
+    "work_school": [
+      61,
+      20,
+      31
+    ],
+    "community": [
+      40,
+      27,
+      57
+    ]
+  },
+  "60": {
+    "family": [
+      87
+    ],
+    "work_school": [
+      23,
+      89,
+      2
+    ],
+    "community": [
+      90,
+      93,
+      48
+    ]
+  },
+  "61": {
+    "family": [
+      92
+    ],
+    "work_school": [
+      66,
+      13
+    ],
+    "community": [
+      9,
+      24
+    ]
+  },
+  "62": {
+    "family": [
+      63,
+      18
+    ],
+    "work_school": [
+      5,
+      71
+    ],
+    "community": [
+      11
+    ]
+  },
+  "63": {
+    "family": [
+      43,
+      53
+    ],
+    "work_school": [
+      15,
+      21
+    ],
+    "community": [
+      57,
+      36,
+      71
+    ]
+  },
+  "64": {
+    "family": [
+      65
+    ],
+    "work_school": [
+      89,
+      29
+    ],
+    "community": [
+      72,
+      93
+    ]
+  },
+  "65": {
+    "family": [
+      20
+    ],
+    "work_school": [
+      52,
+      32
+    ],
+    "community": [
+      72,
+      79
+    ]
+  },
+  "66": {
+    "family": [
+      33,
+      38
+    ],
+    "work_school": [
+      79,
+      28
+    ],
+    "community": [
+      48,
+      96,
+      90
+    ]
+  },
+  "67": {
+    "family": [
+      14,
+      55
+    ],
+    "work_school": [
+      23,
+      43,
+      2
+    ],
+    "community": [
+      72
+    ]
+  },
+  "68": {
+    "family": [
+      20
+    ],
+    "work_school": [
+      42,
+      80,
+      76
+    ],
+    "community": [
+      21
+    ]
+  },
+  "69": {
+    "family": [
+      92,
+      51,
+      27
+    ],
+    "work_school": [
+      5
+    ],
+    "community": [
+      1
+    ]
+  },
+  "70": {
+    "family": [
+      64,
+      59
+    ],
+    "work_school": [
+      6,
+      13
+    ],
+    "community": [
+      41,
+      64,
+      10
+    ]
+  },
+  "71": {
+    "family": [
+      64,
+      21,
+      53
+    ],
+    "work_school": [
+      25,
+      66,
+      15
+    ],
+    "community": [
+      59,
+      39
+    ]
+  },
+  "72": {
+    "family": [
+      69
+    ],
+    "work_school": [
+      9
+    ],
+    "community": [
+      23,
+      78,
+      98
+    ]
+  },
+  "73": {
+    "family": [
+      41
+    ],
+    "work_school": [
+      78,
+      94,
+      75
+    ],
+    "community": [
+      70,
+      28,
+      24
+    ]
+  },
+  "74": {
+    "family": [
+      34,
+      52,
+      0
+    ],
+    "work_school": [
+      62,
+      45
+    ],
+    "community": [
+      90,
+      2,
+      93
+    ]
+  },
+  "75": {
+    "family": [
+      24,
+      15,
+      95
+    ],
+    "work_school": [
+      63
+    ],
+    "community": [
+      4,
+      90
+    ]
+  },
+  "76": {
+    "family": [
+      12
+    ],
+    "work_school": [
+      60,
+      23
+    ],
+    "community": [
+      21,
+      12,
+      52
+    ]
+  },
+  "77": {
+    "family": [
+      20,
+      49
+    ],
+    "work_school": [
+      61
+    ],
+    "community": [
+      66
+    ]
+  },
+  "78": {
+    "family": [
+      69
+    ],
+    "work_school": [
+      55
+    ],
+    "community": [
+      19
+    ]
+  },
+  "79": {
+    "family": [
+      82,
+      23
+    ],
+    "work_school": [
+      61,
+      42
+    ],
+    "community": [
+      46,
+      12,
+      29
+    ]
+  },
+  "80": {
+    "family": [
+      30
+    ],
+    "work_school": [
+      36
+    ],
+    "community": [
+      39,
+      98
+    ]
+  },
+  "81": {
+    "family": [
+      87,
+      68,
+      56
+    ],
+    "work_school": [
+      17,
+      99
+    ],
+    "community": [
+      43,
+      54,
+      89
+    ]
+  },
+  "82": {
+    "family": [
+      92,
+      79,
+      35
+    ],
+    "work_school": [
+      77,
+      42
+    ],
+    "community": [
+      58
+    ]
+  },
+  "83": {
+    "family": [
+      33,
+      79
+    ],
+    "work_school": [
+      81,
+      15,
+      72
+    ],
+    "community": [
+      31
+    ]
+  },
+  "84": {
+    "family": [
+      38
+    ],
+    "work_school": [
+      13
+    ],
+    "community": [
+      25,
+      90
+    ]
+  },
+  "85": {
+    "family": [
+      28
+    ],
+    "work_school": [
+      23,
+      81,
+      4
+    ],
+    "community": [
+      6,
+      78,
+      7
+    ]
+  },
+  "86": {
+    "family": [
+      99
+    ],
+    "work_school": [
+      26
+    ],
+    "community": [
+      83,
+      26,
+      24
+    ]
+  },
+  "87": {
+    "family": [
+      14,
+      68,
+      52
+    ],
+    "work_school": [
+      37,
+      29
+    ],
+    "community": [
+      48,
+      56,
+      85
+    ]
+  },
+  "88": {
+    "family": [
+      61,
+      10
+    ],
+    "work_school": [
+      28,
+      87,
+      74
+    ],
+    "community": [
+      52,
+      20,
+      85
+    ]
+  },
+  "89": {
+    "family": [
+      75
+    ],
+    "work_school": [
+      82,
+      56,
+      69
+    ],
+    "community": [
+      32
+    ]
+  },
+  "90": {
+    "family": [
+      63
+    ],
+    "work_school": [
+      39,
+      36
+    ],
+    "community": [
+      41
+    ]
+  },
+  "91": {
+    "family": [
+      74
+    ],
+    "work_school": [
+      97,
+      59,
+      85
+    ],
+    "community": [
+      95,
+      97
+    ]
+  },
+  "92": {
+    "family": [
+      89,
+      52
+    ],
+    "work_school": [
+      67
+    ],
+    "community": [
+      13
+    ]
+  },
+  "93": {
+    "family": [
+      12,
+      4,
+      73
+    ],
+    "work_school": [
+      12,
+      50
+    ],
+    "community": [
+      76
+    ]
+  },
+  "94": {
+    "family": [
+      39,
+      20,
+      52
+    ],
+    "work_school": [
+      63
+    ],
+    "community": [
+      2
+    ]
+  },
+  "95": {
+    "family": [
+      39,
+      20,
+      79
+    ],
+    "work_school": [
+      8
+    ],
+    "community": [
+      2,
+      77,
+      12
+    ]
+  },
+  "96": {
+    "family": [
+      16,
+      38
+    ],
+    "work_school": [
+      64,
+      89,
+      85
+    ],
+    "community": [
+      54,
+      30,
+      33
+    ]
+  },
+  "97": {
+    "family": [
+      25,
+      75
+    ],
+    "work_school": [
+      91,
+      24,
+      11
+    ],
+    "community": [
+      43,
+      16
+    ]
+  },
+  "98": {
+    "family": [
+      17,
+      94
+    ],
+    "work_school": [
+      95,
+      81
+    ],
+    "community": [
+      99
+    ]
+  },
+  "99": {
+    "family": [
+      19
+    ],
+    "work_school": [
+      91,
+      64,
+      2
+    ],
+    "community": [
+      62,
+      20,
+      27
+    ]
+  }
+}

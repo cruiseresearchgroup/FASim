@@ -1,0 +1,71 @@
+{
+  "title": "Simple Epidemic Simulation",
+  "description": "Models the spread of a virus in a population of 1000 people.",
+  "simulation_type": "agent_based",
+  "entities": [
+    {
+      "name": "Person",
+      "attributes": [
+        "health_status"
+      ],
+      "behaviors": [
+        "interact",
+        "change_status_over_time"
+      ]
+    }
+  ],
+  "interactions": [
+    {
+      "name": "Virus Transmission",
+      "description": "When an Infected person interacts with a Susceptible person, the Susceptible person may become Infected based on a transmission probability.",
+      "entities_involved": [
+        "Person",
+        "Person"
+      ]
+    }
+  ],
+  "parameters": {
+    "population_size": 1000,
+    "initial_infected_count": 10,
+    "transmission_probability": 0.1,
+    "infection_duration_steps": 14,
+    "mortality_probability": 0.02,
+    "interaction_frequency_per_step": 5
+  },
+  "metrics": [
+    {
+      "name": "Susceptible Count",
+      "description": "Number of individuals in the Susceptible state over time."
+    },
+    {
+      "name": "Infected Count",
+      "description": "Number of individuals in the Infected state over time."
+    },
+    {
+      "name": "Recovered Count",
+      "description": "Number of individuals in the Recovered state over time."
+    },
+    {
+      "name": "Dead Count",
+      "description": "Number of individuals in the Dead state over time."
+    },
+    {
+      "name": "Total Cases",
+      "description": "Cumulative number of individuals who have transitioned from Susceptible to Infected."
+    }
+  ],
+  "validation_criteria": [
+    {
+      "name": "Population Conservation",
+      "description": "The total number of individuals (S + I + R + D) should remain constant, accounting for deaths."
+    },
+    {
+      "name": "Valid State Transitions",
+      "description": "Individuals only transition through valid states (e.g., Susceptible -> Infected, Infected -> Recovered or Dead)."
+    },
+    {
+      "name": "Epidemic Curve Shape",
+      "description": "The graph of Infected individuals over time should typically show a plausible curve (rise, peak, decline) if the virus spreads."
+    }
+  ]
+}

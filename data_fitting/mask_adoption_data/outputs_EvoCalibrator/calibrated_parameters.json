@@ -1,0 +1,49 @@
+{
+  "decision_weights": {
+    "alpha": -1.6782743496731258,
+    "gamma": 1.3856202230488488,
+    "theta_f": 0.19444645047173534,
+    "theta_w": 0.19444645047173534,
+    "theta_c": -0.19444645047173534,
+    "beta_r": 0.6935731086909445,
+    "beta_i": 1.2079176637357196,
+    "age_effects": {
+      "Young Adult": 0.06346856847981643,
+      "Youth": 0.12577898416622338
+    },
+    "occ_effects": {
+      "Blue Collar": 0.11061498206509339,
+      "Student": 0.004504502773375655
+    }
+  },
+  "layer_weights": {
+    "family": 1.7172014894632812,
+    "work_school": 1.2629710546791648,
+    "community": 0.01982745585755454
+  },
+  "info_params": {
+    "phi_family": 0.3,
+    "phi_work": 0.18,
+    "phi_community": 0.1,
+    "lambda_broadcast_base": 0.20980411600407606,
+    "lambda_broadcast_factor_after_day10": 5.0,
+    "rho_info_decay": 0.3
+  },
+  "noise_params": {
+    "tau": 1.0
+  },
+  "meta": {
+    "seed": 42,
+    "calibrator_name": "structured_baseline",
+    "training_window": [
+      1,
+      12
+    ],
+    "nll_train": 0.5711051590299687,
+    "selected_rho": 0.3,
+    "source": "observed_logistic_head",
+    "selected_from": "structured_baseline",
+    "evo_best_score": 0.1906475233474634,
+    "baseline_score": 0.07829586514727935
+  }
+}

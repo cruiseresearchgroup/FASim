@@ -1,0 +1,109 @@
+{
+  "model_type": "agent_based",
+  "description": "An agent-based simulation modeling the spread of a virus in a well-mixed population. Individuals (agents) have health states (Susceptible, Infected, Recovered, Dead) and interact randomly, potentially transmitting the virus. Infected individuals recover or die after a fixed duration.",
+  "entities": [
+    {
+      "name": "Person",
+      "attributes": [
+        "health_status",
+        "infection_timer"
+      ],
+      "behaviors": [
+        "update_status"
+      ],
+      "initialization": {
+        "method": "specified_counts",
+        "parameters": {
+          "initial_infected_count": "parameter:initial_infected_count",
+          "initial_state": "Susceptible",
+          "infected_state": "Infected"
+        }
+      }
+    }
+  ],
+  "behaviors": [
+    {
+      "name": "update_status",
+      "description": "Updates the agent's health status based on elapsed time or other conditions.",
+      "applicable_to": [
+        "Person"
+      ],
+      "parameters": {
+        "infection_duration_steps": "parameter:infection_duration_steps",
+        "mortality_probability": "parameter:mortality_probability"
+      },
+      "algorithm": "If agent's health_status is Infected: decrement infection_timer. If infection_timer reaches 0: generate a random number between 0 and 1. If random number < mortality_probability, change health_status to Dead. Otherwise, change health_status to Recovered."
+    }
+  ],
+  "interactions": [
+    {
+      "name": "Virus Transmission",
+      "description": "When an Infected person interacts with a Susceptible person, the Susceptible person may become Infected.",
+      "entities_involved": [
+        "Person",
+        "Person"
+      ],
+      "trigger": "Interaction event between two agents (handled by simulation environment)",
+      "effect": "If one agent is Infected and the other is Susceptible: Generate a random number between 0 and 1. If random number < transmission_probability (parameter), change the Susceptible agent's health_status to Infected and set their infection_timer to infection_duration_steps (parameter)."
+    }
+  ],
+  "environment": {
+    "type": "Non-spatial (Well-mixed)",
+    "dimensions": null,
+    "time_step": 1,
+    "time_unit": "step"
+  },
+  "parameters": {
+    "population_size": 1000,
+    "initial_infected_count": 10,
+    "transmission_probability": 0.1,
+    "infection_duration_steps": 14,
+    "mortality_probability": 0.02,
+    "interaction_frequency_per_step": 5,
+    "simulation_steps": 100,
+    "random_seed": null
+  },
+  "initialization": {
+    "population_size": "parameter:population_size",
+    "initial_state_distribution": "Create population_size agents. Assign 'initial_infected_count' agents to 'Infected' status, setting their 'infection_timer' to 'infection_duration_steps'. Assign the remaining agents to 'Susceptible' status. All other counts (Recovered, Dead) start at 0.",
+    "random_seed": "parameter:random_seed"
+  },
+  "algorithms": {
+    "Simulation Step": "1. Record current state counts (metrics). 2. Handle Interactions: For (interaction_frequency_per_step * population_size) times, randomly select two distinct agents from the population. Apply the 'Virus Transmission' logic between them. 3. Handle Individual Updates: Iterate through all agents; apply the 'update_status' behavior to each agent. 4. Increment simulation time step.",
+    "Interaction Pairing": "Random sampling with replacement of two distinct agents from the list of all agents.",
+    "State Transition Logic": "Implemented within the 'update_status' behavior and 'Virus Transmission' interaction, based on conditions and random probability draws."
+  },
+  "data_sources": [],
+  "code_structure": {
+    "files": [
+      {
+        "name": "main.py",
+        "description": "Entry point of the simulation. Loads configuration, initializes simulation environment and agents, runs the simulation loop for a specified number of steps, and handles data output/visualization."
+      },
+      {
+        "name": "person.py",
+        "description": "Defines the Person class (agent). Includes attributes like health_status and infection_timer, and methods for behaviors like update_status."
+      },
+      {
+        "name": "simulation_env.py",
+        "description": "Manages the collection of agents and the simulation state. Contains the main simulation step logic, including handling interactions and iterating through agents for individual updates. Responsible for tracking time steps."
+      },
+      {
+        "name": "config.py",
+        "description": "Stores simulation parameters and configuration settings."
+      },
+      {
+        "name": "metrics.py",
+        "description": "Contains functions or classes to calculate and track simulation metrics (Susceptible, Infected, Recovered, Dead counts, Total Cases) over time."
+      },
+      {
+        "name": "utils.py",
+        "description": "Utility functions, such as random number generation with optional seeding."
+      }
+    ],
+    "dependencies": [
+      "random",
+      "collections"
+    ]
+  }
+}

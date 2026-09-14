@@ -1,0 +1,638 @@
+{
+  "playbook_metadata": {
+    "version": "v0.1",
+    "project_name": "",
+    "last_updated_time": "2026-07-26T18:50:37.096348",
+    "last_updated_iteration": "2",
+    "total_token_count": 808,
+    "total_insights": 24,
+    "solved_count": 16,
+    "unsolved_count": 8,
+    "deleted_count": 0,
+    "finalized_at": "2026-07-26T18:50:37.105682"
+  },
+  "strategies": {},
+  "insights": {
+    "bo-optimizes-on-train-window-not-validation-holdout": {
+      "meta_info": {
+        "status": "solved",
+        "token_count": 37,
+        "usage_count": 1,
+        "unusage_count": 0,
+        "success_attribution": 1,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "If a blueprint specifies temporal holdout, the optimizer's objective must be computed on the same holdout definition as the final reported metrics.",
+        "metric_links": [
+          {
+            "name": "validation_objective_raw",
+            "direction": "lower_is_better",
+            "weight": 0.4
+          },
+          {
+            "name": "RMSE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.3
+          },
+          {
+            "name": "Brier_mean",
+            "direction": "lower_is_better",
+            "weight": 0.3
+          }
+        ]
+      }
+    },
+    "transitionfit-direction-inverted-in-bo-objective": {
+      "meta_info": {
+        "status": "solved",
+        "token_count": 26,
+        "usage_count": 1,
+        "unusage_count": 0,
+        "success_attribution": 1,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "CODE_BUG",
+        "key_insight": "Never invert a metric without checking whether the implementation already returns an error/loss form.",
+        "metric_links": [
+          {
+            "name": "TransitionFit_mean",
+            "direction": "lower_is_better",
+            "weight": 0.6
+          },
+          {
+            "name": "validation_objective_raw",
+            "direction": "lower_is_better",
+            "weight": 0.4
+          }
+        ]
+      }
+    },
+    "ace-val-loss-adds-transition-error-with-wrong-sign": {
+      "meta_info": {
+        "status": "solved",
+        "token_count": 26,
+        "usage_count": 1,
+        "unusage_count": 0,
+        "success_attribution": 1,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "Search-time and report-time objectives must be identical, or optimization diagnostics become misleading.",
+        "metric_links": [
+          {
+            "name": "val_loss",
+            "direction": "lower_is_better",
+            "weight": 0.5
+          },
+          {
+            "name": "validation_objective_raw",
+            "direction": "lower_is_better",
+            "weight": 0.5
+          }
+        ]
+      }
+    },
+    "risk-effect-sign-flip-for-high-risk-agents": {
+      "meta_info": {
+        "status": "solved",
+        "token_count": 32,
+        "usage_count": 1,
+        "unusage_count": 0,
+        "success_attribution": 1,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "Do not inject hidden behavioral heuristics into a calibrated model; every nonlinearity should be explicit, named, and estimable.",
+        "metric_links": [
+          {
+            "name": "RMSE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.5
+          },
+          {
+            "name": "Brier_mean",
+            "direction": "lower_is_better",
+            "weight": 0.5
+          }
+        ]
+      }
+    },
+    "info-diffusion-uses-info-neighbors-instead-of-mask-neighbors": {
+      "meta_info": {
+        "status": "solved",
+        "token_count": 34,
+        "usage_count": 1,
+        "unusage_count": 0,
+        "success_attribution": 1,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "When two latent channels exist (behavior and information), verify that each diffusion equation is driven by the intended state variable.",
+        "metric_links": [
+          {
+            "name": "Brier_mean",
+            "direction": "lower_is_better",
+            "weight": 0.6
+          },
+          {
+            "name": "TransitionFit_mean",
+            "direction": "lower_is_better",
+            "weight": 0.4
+          }
+        ]
+      }
+    },
+    "calibration-ignores-observed-received-info": {
+      "meta_info": {
+        "status": "solved",
+        "token_count": 34,
+        "usage_count": 1,
+        "unusage_count": 0,
+        "success_attribution": 1,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "If the data contains an observed latent driver, omitting it from calibration makes downstream coefficients absorb the misspecification.",
+        "metric_links": [
+          {
+            "name": "Brier_mean",
+            "direction": "lower_is_better",
+            "weight": 0.5
+          },
+          {
+            "name": "validation_objective_raw",
+            "direction": "lower_is_better",
+            "weight": 0.5
+          }
+        ]
+      }
+    },
+    "layer-weights-are-not-used-in-decision-rule": {
+      "meta_info": {
+        "status": "solved",
+        "token_count": 35,
+        "usage_count": 1,
+        "unusage_count": 0,
+        "success_attribution": 1,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "If a parameter is exposed to calibration, verify it appears in the forward equations; otherwise the search space contains inert dimensions.",
+        "metric_links": [
+          {
+            "name": "RMSE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.5
+          },
+          {
+            "name": "TransitionFit_mean",
+            "direction": "lower_is_better",
+            "weight": 0.5
+          }
+        ]
+      }
+    },
+    "bo-normalization-clamps-objective-and-causes-plateau": {
+      "meta_info": {
+        "status": "solved",
+        "token_count": 34,
+        "usage_count": 1,
+        "unusage_count": 0,
+        "success_attribution": 1,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "EVAL_SIGNAL",
+        "key_insight": "For BO, objective shaping must preserve ranking resolution; clipping early-sampled min-max ranges often destroys the acquisition signal.",
+        "metric_links": [
+          {
+            "name": "validation_objective_raw",
+            "direction": "lower_is_better",
+            "weight": 0.6
+          },
+          {
+            "name": "val_loss",
+            "direction": "lower_is_better",
+            "weight": 0.4
+          }
+        ]
+      }
+    },
+    "runtime-excessive-for-short-series-bo-loop": {
+      "meta_info": {
+        "status": "solved",
+        "token_count": 35,
+        "usage_count": 1,
+        "unusage_count": 0,
+        "success_attribution": 1,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "EVAL_SIGNAL",
+        "key_insight": "When optimization diagnostics show a flat objective and collapsed trust region, stop the search instead of paying for identical evaluations.",
+        "metric_links": [
+          {
+            "name": "val_loss",
+            "direction": "lower_is_better",
+            "weight": 0.3
+          },
+          {
+            "name": "validation_objective_raw",
+            "direction": "lower_is_better",
+            "weight": 0.7
+          }
+        ]
+      }
+    },
+    "forecast-initialized-from-last-observed-not-last-train-state": {
+      "meta_info": {
+        "status": "solved",
+        "token_count": 39,
+        "usage_count": 1,
+        "unusage_count": 0,
+        "success_attribution": 1,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "Any holdout pipeline must derive every forward-simulation initial condition from the train/validation split boundary, never from the full observed panel.",
+        "metric_links": []
+      }
+    },
+    "hardcoded-post-day10-broadcast-mechanism-not-in-blueprint": {
+      "meta_info": {
+        "status": "solved",
+        "token_count": 31,
+        "usage_count": 1,
+        "unusage_count": 0,
+        "success_attribution": 1,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "Do not promote optional narrative interventions into default core dynamics unless the spec or data explicitly requires them.",
+        "metric_links": [
+          {
+            "name": "Brier_mean",
+            "direction": "lower_is_better",
+            "weight": 0.35
+          },
+          {
+            "name": "RMSE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.35
+          },
+          {
+            "name": "TransitionFit_mean",
+            "direction": "lower_is_better",
+            "weight": 0.3
+          }
+        ]
+      }
+    },
+    "info-calibration-heuristic-ignores-joint-likelihood-and-observed-saturation": {
+      "meta_info": {
+        "status": "solved",
+        "token_count": 44,
+        "usage_count": 1,
+        "unusage_count": 0,
+        "success_attribution": 1,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "When an observed latent driver is available, calibrate its generating process directly rather than freezing key coefficients and hoping downstream behavior absorbs the error.",
+        "metric_links": [
+          {
+            "name": "Brier_mean",
+            "direction": "lower_is_better",
+            "weight": 0.4
+          },
+          {
+            "name": "RMSE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.3
+          },
+          {
+            "name": "TransitionFit_mean",
+            "direction": "lower_is_better",
+            "weight": 0.3
+          }
+        ]
+      }
+    },
+    "memory-feature-uses-current-day-observed-info-creating-train-sim-mismatch": {
+      "meta_info": {
+        "status": "solved",
+        "token_count": 37,
+        "usage_count": 1,
+        "unusage_count": 0,
+        "success_attribution": 1,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "Panel calibration must mirror rollout timing exactly; if a covariate is simulated online, its training feature should follow the same causal order.",
+        "metric_links": [
+          {
+            "name": "Brier_mean",
+            "direction": "lower_is_better",
+            "weight": 0.5
+          },
+          {
+            "name": "RMSE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.3
+          },
+          {
+            "name": "MAE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.2
+          }
+        ]
+      }
+    },
+    "aggregate-trajectory-systematically-underpredicts-adoption": {
+      "meta_info": {
+        "status": "solved",
+        "token_count": 37,
+        "usage_count": 1,
+        "unusage_count": 0,
+        "success_attribution": 1,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "EVAL_SIGNAL",
+        "key_insight": "A persistent one-sided aggregate bias across all validation days usually indicates mechanism misspecification, not just random calibration noise.",
+        "metric_links": [
+          {
+            "name": "RMSE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.6
+          },
+          {
+            "name": "MAE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.4
+          }
+        ]
+      }
+    },
+    "transitionfit-computation-uses-joint-state-frequencies-not-conditional-transition-probabilities": {
+      "meta_info": {
+        "status": "solved",
+        "token_count": 41,
+        "usage_count": 1,
+        "unusage_count": 0,
+        "success_attribution": 1,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "When a metric is named as a transition probability, compute it conditionally on the source state; otherwise optimization will target the wrong behavioral quantity.",
+        "metric_links": [
+          {
+            "name": "TransitionFit_mean",
+            "direction": "lower_is_better",
+            "weight": 1.0
+          }
+        ]
+      }
+    },
+    "missing-blueprint-required-calibration-diagnostics-and-uncertainty-artifacts": {
+      "meta_info": {
+        "status": "solved",
+        "token_count": 27,
+        "usage_count": 1,
+        "unusage_count": 0,
+        "success_attribution": 1,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "If a blueprint asks for diagnostics, log them as structured artifacts rather than transient console output.",
+        "metric_links": []
+      }
+    },
+    "validation-leakage-in-search-calibrators": {
+      "meta_info": {
+        "status": "unsolved",
+        "token_count": 30,
+        "usage_count": 0,
+        "unusage_count": 0,
+        "success_attribution": 0,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "Never let holdout metrics drive parameter search; use train-only objectives and reserve validation for final scoring.",
+        "metric_links": [
+          {
+            "name": "val_loss",
+            "direction": "lower_is_better",
+            "weight": 0.4
+          },
+          {
+            "name": "validation_objective_raw",
+            "direction": "lower_is_better",
+            "weight": 0.3
+          },
+          {
+            "name": "Brier_mean",
+            "direction": "lower_is_better",
+            "weight": 0.3
+          }
+        ]
+      }
+    },
+    "received-info-required-column-mismatch": {
+      "meta_info": {
+        "status": "unsolved",
+        "token_count": 26,
+        "usage_count": 0,
+        "unusage_count": 0,
+        "success_attribution": 0,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "When the spec marks a field optional, the ingestion layer must support both presence and absence paths.",
+        "metric_links": []
+      }
+    },
+    "rho-info-decay-not-calibrated": {
+      "meta_info": {
+        "status": "unsolved",
+        "token_count": 34,
+        "usage_count": 0,
+        "unusage_count": 0,
+        "success_attribution": 0,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "If a latent memory state drives decisions, its decay parameter must be estimated jointly with the signal process, not frozen by config.",
+        "metric_links": [
+          {
+            "name": "Brier_mean",
+            "direction": "lower_is_better",
+            "weight": 0.3
+          },
+          {
+            "name": "RMSE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.35
+          },
+          {
+            "name": "MAE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.35
+          }
+        ]
+      }
+    },
+    "tau-noise-fixed-not-estimated": {
+      "meta_info": {
+        "status": "unsolved",
+        "token_count": 31,
+        "usage_count": 0,
+        "unusage_count": 0,
+        "success_attribution": 0,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "Any parameter that materially changes predicted probabilities should be fit or explicitly removed from the simulation path.",
+        "metric_links": [
+          {
+            "name": "Brier_mean",
+            "direction": "lower_is_better",
+            "weight": 1.0
+          }
+        ]
+      }
+    },
+    "expected-info-training-simulation-mismatch": {
+      "meta_info": {
+        "status": "unsolved",
+        "token_count": 32,
+        "usage_count": 0,
+        "unusage_count": 0,
+        "success_attribution": 0,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "DESIGN_MISMATCH",
+        "key_insight": "Feature generation for calibration must match feature generation at simulation time, especially for latent stochastic channels.",
+        "metric_links": [
+          {
+            "name": "RMSE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.4
+          },
+          {
+            "name": "MAE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.3
+          },
+          {
+            "name": "Brier_mean",
+            "direction": "lower_is_better",
+            "weight": 0.3
+          }
+        ]
+      }
+    },
+    "aggregate-adoption-severely-underpredicted": {
+      "meta_info": {
+        "status": "unsolved",
+        "token_count": 35,
+        "usage_count": 0,
+        "unusage_count": 0,
+        "success_attribution": 0,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "EVAL_SIGNAL",
+        "key_insight": "When forecast direction is wrong, inspect the baseline term, persistence term, and upstream signal prevalence before tuning finer effects.",
+        "metric_links": [
+          {
+            "name": "RMSE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.6
+          },
+          {
+            "name": "MAE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.4
+          }
+        ]
+      }
+    },
+    "transition-dynamics-misfit-high-abandonment": {
+      "meta_info": {
+        "status": "unsolved",
+        "token_count": 35,
+        "usage_count": 0,
+        "unusage_count": 0,
+        "success_attribution": 0,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "EVAL_SIGNAL",
+        "key_insight": "If P01 and P11 are both important, a single pooled transition equation is often too rigid; model state-conditioned transitions explicitly.",
+        "metric_links": [
+          {
+            "name": "TransitionFit_mean",
+            "direction": "lower_is_better",
+            "weight": 0.7
+          },
+          {
+            "name": "RMSE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.3
+          }
+        ]
+      }
+    },
+    "info-process-fails-to-match-observed-saturation": {
+      "meta_info": {
+        "status": "unsolved",
+        "token_count": 36,
+        "usage_count": 0,
+        "unusage_count": 0,
+        "success_attribution": 0,
+        "failure_attribution": 0
+      },
+      "reflection": {
+        "issue_type": "EVAL_SIGNAL",
+        "key_insight": "If an upstream latent channel is underfit, downstream behavior errors are expected; validate signal prevalence before trusting action forecasts.",
+        "metric_links": [
+          {
+            "name": "Brier_mean",
+            "direction": "lower_is_better",
+            "weight": 0.25
+          },
+          {
+            "name": "RMSE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.4
+          },
+          {
+            "name": "MAE_aggregate_mean",
+            "direction": "lower_is_better",
+            "weight": 0.35
+          }
+        ]
+      }
+    }
+  }
+}

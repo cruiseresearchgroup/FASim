@@ -1,0 +1,65 @@
+{
+  "title": "Simple Epidemic Spread Simulation",
+  "description": "Models the spread of a virus within a closed population of 1000 individuals using an agent-based approach.",
+  "simulation_type": "agent_based",
+  "entities": [
+    {
+      "name": "Person",
+      "attributes": [
+        "health_state"
+      ],
+      "behaviors": [
+        "Change health state based on interactions and time"
+      ]
+    }
+  ],
+  "interactions": [
+    {
+      "name": "Virus Transmission",
+      "description": "An infected person interacts with a susceptible person, with a certain probability of transmitting the virus.",
+      "entities_involved": [
+        "Person",
+        "Person"
+      ]
+    }
+  ],
+  "parameters": {
+    "population_size": 1000,
+    "initial_infected_count": 1,
+    "transmission_probability": 0.1,
+    "infection_duration_steps": 10,
+    "contact_rate_per_step": 5
+  },
+  "metrics": [
+    {
+      "name": "Susceptible Count",
+      "description": "The number of individuals in the 'susceptible' health state over time."
+    },
+    {
+      "name": "Infected Count",
+      "description": "The number of individuals in the 'infected' health state over time."
+    },
+    {
+      "name": "Recovered Count",
+      "description": "The number of individuals in the 'recovered' health state over time."
+    },
+    {
+      "name": "Total Infections",
+      "description": "The cumulative number of individuals who have transitioned into the 'infected' state."
+    }
+  ],
+  "validation_criteria": [
+    {
+      "name": "Population Conservation",
+      "description": "The sum of individuals in susceptible, infected, and recovered states must always equal the initial population size."
+    },
+    {
+      "name": "State Transition Logic",
+      "description": "Individuals should only transition from Susceptible -> Infected -> Recovered, following the defined infection duration."
+    },
+    {
+      "name": "Epidemic Curve Shape",
+      "description": "The 'Infected Count' metric should typically show a rise and fall over time, characteristic of an epidemic (unless parameters prevent spread)."
+    }
+  ]
+}

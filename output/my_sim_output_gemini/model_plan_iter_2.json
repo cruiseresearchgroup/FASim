@@ -1,0 +1,94 @@
+{
+  "model_type": "agent_based",
+  "description": "A simple agent-based simulation modeling the spread of a virus in a well-mixed population. Individuals (agents) have a health status and can transition between states (Susceptible, Infected, Recovered) based on interactions and internal probabilities.",
+  "entities": [
+    {
+      "name": "Person",
+      "attributes": [
+        "id",
+        "health_status"
+      ],
+      "behaviors": [
+        "potentially_recover"
+      ],
+      "initialization": {
+        "method": "specified_distribution",
+        "parameters": {
+          "initial_state_distribution": {
+            "Infected": "parameter:initial_infected_count",
+            "Susceptible": "parameter:population_size - parameter:initial_infected_count",
+            "Recovered": 0
+          }
+        }
+      }
+    }
+  ],
+  "behaviors": [
+    {
+      "name": "potentially_recover",
+      "description": "An infected individual has a chance to transition from the 'Infected' state to the 'Recovered' state in each simulation step.",
+      "applicable_to": [
+        "Person"
+      ],
+      "parameters": {
+        "recovery_probability": "parameter:recovery_probability_per_step"
+      },
+      "algorithm": "If the agent's health_status is 'Infected', generate a random number between 0 and 1. If the random number is less than or equal to 'recovery_probability_per_step', the agent's health_status changes to 'Recovered'."
+    }
+  ],
+  "interactions": [
+    {
+      "name": "Virus Transmission",
+      "description": "When an Infected person interacts with a Susceptible person, the Susceptible person has a probability of becoming Infected.",
+      "entities_involved": [
+        "Person",
+        "Person"
+      ],
+      "trigger": "random_pairing_per_step",
+      "effect": "If one agent is 'Infected' and the other is 'Susceptible', the 'Susceptible' agent transitions to 'Infected' with probability 'transmission_probability'."
+    }
+  ],
+  "environment": {
+    "type": "well-mixed",
+    "description": "A non-spatial environment where any agent can potentially interact with any other agent.",
+    "dimensions": null,
+    "time_step": 1,
+    "time_unit": "step"
+  },
+  "parameters": {
+    "population_size": 1000,
+    "initial_infected_count": 1,
+    "transmission_probability": 0.1,
+    "recovery_probability_per_step": 0.05,
+    "simulation_steps": 100,
+    "random_seed": null
+  },
+  "initialization": {
+    "description": "Create a population of 'population_size' Person agents. Assign unique IDs. Set 'initial_infected_count' agents to the 'Infected' state and the rest to the 'Susceptible' state. All agents initially have health_status 'Susceptible' except for the initial infected.",
+    "population_size": "parameter:population_size",
+    "random_seed": "parameter:random_seed"
+  },
+  "algorithms": {
+    "simulation_step": "The simulation proceeds in discrete steps for 'simulation_steps'. In each step:\n1. Identify agents whose states will change (to avoid issues with changing states mid-step). Create lists: `agents_to_infect`, `agents_to_recover`.\n2. **Interactions (Virus Transmission):** Perform 'population_size' random pairings of distinct agents. For each pair (A, B):\n   - If (A is 'Infected' and B is 'Susceptible'): With probability 'transmission_probability', add B to `agents_to_infect`.\n   - If (B is 'Infected' and A is 'Susceptible'): With probability 'transmission_probability', add A to `agents_to_infect`.\n   (Ensure an agent is not added multiple times or if its state has already been marked for change).\n3. **Behaviors (Potentially Recover):** Iterate through all agents currently in the 'Infected' state. For each infected agent:\n   - Execute the 'potentially_recover' behavior's algorithm. If it results in recovery, add the agent to `agents_to_recover`.\n   (Ensure an agent is not added multiple times).\n4. **Apply State Changes:** Iterate through `agents_to_infect`. If an agent is currently 'Susceptible', change its status to 'Infected'. Iterate through `agents_to_recover`. If an agent is currently 'Infected', change its status to 'Recovered'.\n5. **Update Metrics:** Recalculate the counts of Susceptible, Infected, and Recovered agents. Update the cumulative 'total_infections' (this metric counts how many *unique* individuals have entered the 'Infected' state at any point; typically, this is the initial infected count plus the number of Susceptibles who became Infected).\n6. Increment the simulation time step."
+  },
+  "data_sources": [],
+  "code_structure": {
+    "files": [
+      {
+        "name": "simulation.py",
+        "description": "Contains the main simulation loop, initialization logic, parameter handling, and metric tracking."
+      },
+      {
+        "name": "agent.py",
+        "description": "Defines the Person class, including attributes (id, health_status) and methods for behaviors (e.g., potentially_recover)."
+      },
+      {
+        "name": "model.py",
+        "description": "Optional: A class to encapsulate the simulation state (list of agents, parameters, current step, metrics)."
+      }
+    ],
+    "dependencies": [
+      "random"
+    ]
+  }
+}
