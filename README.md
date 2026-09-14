@@ -1,3 +1,5 @@
+hello world
+
 # SOCIA
 
 SOCIA constructs and refines executable social simulators with a structured simulator blueprint, calibration, and evidence-based repair. This repository contains the ACE workflow used for the main experiments, plus scripts and frozen artifacts for the controlled supplementary experiments.
