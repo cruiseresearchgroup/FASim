@@ -18,7 +18,6 @@ from agents.code_generation_odd.agent import CodeGenerationAgent as CodeGenerati
 from agents.code_generation_ace.agent import CodeGenerationAgent as CodeGenerationAceAgent
 from agents.code_generation_alpha.agent import CodeGenerationAgent as CodeGenerationAlphaAgent
 from agents.code_generation_gsim.agent import CodeGenerationAgent as CodeGenerationGsimAgent
-from agents.code_generation_srr.agent import CodeGenerationAgent as CodeGenerationSrrAgent
 from agents.code_verification.agent import CodeVerificationAgent
 from agents.simulation_execution.agent import SimulationExecutionAgent
 from agents.simulation_execution_ace.agent import SimulationExecutionAgent as SimulationExecutionAceAgent
@@ -30,9 +29,24 @@ from agents.feedback_generation_odd.agent import FeedbackGenerationOddAgent
 from agents.feedback_generation_ace.agent import FeedbackGenerationAgent as FeedbackGenerationAceAgent
 from agents.feedback_generation_alpha.agent import FeedbackGenerationAgent as FeedbackGenerationAlphaAgent
 from agents.feedback_generation_gsim.agent import FeedbackGenerationAgent as FeedbackGenerationGsimAgent
-from agents.feedback_generation_srr.agent import FeedbackGenerationAgent as FeedbackGenerationSrrAgent
+from agents.feedback_generation_falsify.agent import FeedbackGenerationAgent as FeedbackGenerationFalsifyAgent
 from agents.iteration_control.agent import IterationControlAgent
 from agents.iteration_control_ace.agent import IterationControlAgent as IterationControlAceAgent
+from agents.hypothesis_generation.agent import HypothesisGenerationAgent
+from agents.falsification.agent import FalsificationAgent
+
+# Some distributions expose SRR as a prompt/config profile without shipping
+# dedicated subclasses. Reuse the G-SIM implementations in that case so all
+# declared CLI modes remain importable.
+try:
+    from agents.code_generation_srr.agent import CodeGenerationAgent as CodeGenerationSrrAgent
+except ModuleNotFoundError:
+    CodeGenerationSrrAgent = CodeGenerationGsimAgent
+
+try:
+    from agents.feedback_generation_srr.agent import FeedbackGenerationAgent as FeedbackGenerationSrrAgent
+except ModuleNotFoundError:
+    FeedbackGenerationSrrAgent = FeedbackGenerationGsimAgent
 
 class AgentContainer(containers.DeclarativeContainer):
     """
@@ -81,6 +95,14 @@ class AgentContainer(containers.DeclarativeContainer):
             "simulation_execution_gsim": {"prompt_template": "templates/simulation_execution_prompt.txt", "output_format": "json"},
             "feedback_generation_gsim": {"prompt_template": "templates/feedback_generation_gsim_prompt.txt", "output_format": "json"},
             "feedback_generation_srr": {"prompt_template": "templates/feedback_generation_srr_prompt.txt", "output_format": "json"},
+            "feedback_generation_falsify": {"prompt_template": "templates/feedback_generation_falsify_prompt.txt", "output_format": "json"},
+            "hypothesis_generation": {"prompt_template": "templates/hypothesis_generation_falsify_prompt.txt", "output_format": "json"},
+            "falsification": {
+                "prompt_template": "templates/falsification_plan_prompt.txt",
+                "plan_prompt_template": "templates/falsification_plan_prompt.txt",
+                "evaluation_prompt_template": "templates/falsification_evaluation_prompt.txt",
+                "output_format": "json",
+            },
             "code_verification": {"prompt_template": "templates/code_verification_prompt.txt", "output_format": "json"},
             "simulation_execution": {"prompt_template": "templates/simulation_execution_prompt.txt", "output_format": "json"},
             "simulation_execution_ace": {"prompt_template": "templates/simulation_execution_prompt.txt", "output_format": "json"},
@@ -229,6 +251,21 @@ class AgentContainer(containers.DeclarativeContainer):
         FeedbackGenerationSrrAgent,
         config=config.agents.feedback_generation_srr
     )
+
+    feedback_generation_falsify_agent = providers.Factory(
+        FeedbackGenerationFalsifyAgent,
+        config=config.agents.feedback_generation_falsify
+    )
+
+    hypothesis_generation_agent = providers.Factory(
+        HypothesisGenerationAgent,
+        config=config.agents.hypothesis_generation
+    )
+
+    falsification_agent = providers.Factory(
+        FalsificationAgent,
+        config=config.agents.falsification
+    )
     
     iteration_control_agent = providers.Factory(
         IterationControlAgent,
@@ -259,6 +296,9 @@ class AgentContainer(containers.DeclarativeContainer):
             "simulation_execution_gsim": simulation_execution_gsim_agent,
             "feedback_generation_gsim": feedback_generation_gsim_agent,
             "feedback_generation_srr": feedback_generation_srr_agent,
+            "feedback_generation_falsify": feedback_generation_falsify_agent,
+            "hypothesis_generation": hypothesis_generation_agent,
+            "falsification": falsification_agent,
             "code_verification": code_verification_agent,
             "simulation_execution": simulation_execution_agent,
             "simulation_execution_ace": simulation_execution_ace_agent,

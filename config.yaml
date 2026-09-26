@@ -9,7 +9,7 @@ llm:
 # Available LLM providers configuration
 llm_providers:
   openai:
-    model: "gpt-5.4"  # options: gpt-4.1, gpt-4o, gpt-4-turbo, gpt-3.5-turbo, gpt-4.1-2025-04-14, etc.
+    model: "gpt-5.6-sol"
     temperature: 0.7
     use_responses_api: true
     max_output_tokens: 10000
@@ -188,7 +188,24 @@ agents:
     enabled: true
     prompt_template: "templates/feedback_generation_srr_prompt.txt"
     output_format: "json"
-    
+
+  feedback_generation_falsify:
+    enabled: true
+    prompt_template: "templates/feedback_generation_falsify_prompt.txt"
+    output_format: "json"
+
+  hypothesis_generation:
+    enabled: true
+    prompt_template: "templates/hypothesis_generation_falsify_prompt.txt"
+    output_format: "json"
+
+  falsification:
+    enabled: true
+    prompt_template: "templates/falsification_plan_prompt.txt"
+    plan_prompt_template: "templates/falsification_plan_prompt.txt"
+    evaluation_prompt_template: "templates/falsification_evaluation_prompt.txt"
+    output_format: "json"
+
   iteration_control:
     enabled: true
     prompt_template: "templates/iteration_control_prompt.txt"
@@ -200,6 +217,15 @@ agents:
     prompt_template: "templates/iteration_control_prompt.txt"
     output_format: "json"
     convergence_threshold: 0.05
+
+falsification:
+  simulation_call_budget: 40
+  per_issue_simulation_call_budget: 30
+  max_sequential_probes: 3
+  max_hypothesis_revisions: 1
+  execution_timeout: 300
+  stagnation_patience: 2
+  minimum_fidelity_improvement: 0.0
     
 workflow:
   max_iterations: 3

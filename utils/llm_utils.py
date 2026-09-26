@@ -5,9 +5,39 @@ Utilities for interacting with LLMs in the SOCIA system.
 import os
 import json
 import logging
+import time
 from typing import Dict, Any, List, Union, Optional
 from pathlib import Path
-from together import Together
+from utils.llm_usage import record_llm_request
+class LLMCallError(RuntimeError):
+    """Structured failure raised when an LLM request cannot produce a response."""
+
+    def __init__(
+        self,
+        provider: str,
+        operation: str,
+        message: str,
+        *,
+        retryable: bool = False,
+        cause: Optional[BaseException] = None,
+    ):
+        self.provider = provider
+        self.operation = operation
+        self.retryable = retryable
+        self.cause_type = type(cause).__name__ if cause is not None else None
+        super().__init__(message)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Return safe diagnostic metadata without prompts or credentials."""
+
+        return {
+            "error_type": self.__class__.__name__,
+            "provider": self.provider,
+            "operation": self.operation,
+            "message": str(self),
+            "retryable": self.retryable,
+            "cause_type": self.cause_type,
+        }
 
 def load_api_key(key_name: str) -> Optional[str]:
     """
@@ -115,8 +145,12 @@ class OpenAIProvider(LLMProvider):
                 api_key = self.config.get("api_key")
                 
             if not api_key:
-                self.logger.error("OpenAI API key not found in keys.py")
-                return "Error: OpenAI API key not found in keys.py"
+                raise LLMCallError(
+                    "openai",
+                    "authentication",
+                    "OpenAI API key is not configured",
+                    retryable=False,
+                )
             
             # Initialize client
             client = OpenAI(api_key=api_key)
@@ -127,6 +161,32 @@ class OpenAIProvider(LLMProvider):
             # Use cached effective max tokens
             use_responses_api = self.config.get("use_responses_api", False)
             effective_max = self.effective_max_tokens
+
+            def _invoke(endpoint, method, kwargs):
+                started_at = time.monotonic()
+                try:
+                    response = method(**kwargs)
+                except Exception as exc:
+                    record_llm_request(
+                        endpoint=endpoint,
+                        model=model,
+                        prompt=prompt,
+                        max_output_tokens=kwargs.get("max_output_tokens", kwargs.get("max_tokens")),
+                        reasoning=reasoning,
+                        started_at=started_at,
+                        error=exc,
+                    )
+                    raise
+                record_llm_request(
+                    endpoint=endpoint,
+                    model=model,
+                    prompt=prompt,
+                    max_output_tokens=kwargs.get("max_output_tokens", kwargs.get("max_tokens")),
+                    reasoning=reasoning,
+                    started_at=started_at,
+                    response=response,
+                )
+                return response
 
             def _extract_from_responses(resp_obj):
                 # Prefer unified SDK helper when available
@@ -172,7 +232,7 @@ class OpenAIProvider(LLMProvider):
                             "max_output_tokens": 100000  # Larger output for reasoning models
                         })
                     
-                    resp = client.responses.create(**responses_kwargs)
+                    resp = _invoke("responses.create", client.responses.create, responses_kwargs)
                     return _extract_from_responses(resp)
                 else:
                     chat_kwargs = {
@@ -181,7 +241,7 @@ class OpenAIProvider(LLMProvider):
                         "temperature": temperature,
                         "max_tokens": effective_max,
                     }
-                    resp = client.chat.completions.create(**chat_kwargs)
+                    resp = _invoke("chat.completions.create", client.chat.completions.create, chat_kwargs)
                     return resp.choices[0].message.content
             except Exception as call_err:
                 err_str = str(call_err)
@@ -204,22 +264,43 @@ class OpenAIProvider(LLMProvider):
                                 "max_output_tokens": 100000  # Larger output for reasoning models
                             })
                         
-                        resp = client.responses.create(**responses_kwargs)
+                        resp = _invoke("responses.create", client.responses.create, responses_kwargs)
                         return _extract_from_responses(resp)
                     except Exception as resp_err:
                         self.logger.error(f"OpenAI Responses API retry failed: {resp_err}")
-                        return f"Error: {str(resp_err)}"
+                        raise LLMCallError(
+                            "openai",
+                            "responses.create",
+                            str(resp_err),
+                            retryable=True,
+                            cause=resp_err,
+                        ) from resp_err
                 else:
                     # Other errors: log and return
                     raise
         
-        except ImportError:
+        except LLMCallError:
+            raise
+
+        except ImportError as exc:
             self.logger.error("openai package not installed")
-            return "Error: openai package not installed"
+            raise LLMCallError(
+                "openai",
+                "client_initialization",
+                "openai package is not installed",
+                retryable=False,
+                cause=exc,
+            ) from exc
         
         except Exception as e:
             self.logger.error(f"Error calling OpenAI API: {e}")
-            return f"Error: {str(e)}"
+            raise LLMCallError(
+                "openai",
+                "api_call",
+                str(e),
+                retryable=True,
+                cause=e,
+            ) from e
 
 
 class GeminiProvider(LLMProvider):
@@ -398,6 +479,10 @@ class TogetherProvider(LLMProvider):
             The LLM's response
         """
         try:
+            # Keep optional providers isolated: importing this module for the
+            # OpenAI path must not require the Together SDK to be installed.
+            from together import Together
+
             api_key = load_api_key("TOGETHER_API_KEY")
             if not api_key:
                 api_key = self.config.get("api_key") or os.environ.get("TOGETHER_API_KEY")
@@ -531,4 +616,4 @@ def get_llm_provider(config: Dict[str, Any]) -> LLMProvider:
         elif provider_name == "llama":
             return LlamaProvider({})
         else:
-            return MockProvider({}) 
+            return MockProvider({})

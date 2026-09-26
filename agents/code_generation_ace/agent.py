@@ -8,9 +8,16 @@ import os
 import json
 import ast
 import re
+import difflib
+import subprocess
+import sys
+import tempfile
 from typing import Dict, Any, Optional, List
 
 from agents.base_agent import BaseAgent
+from orchestration.workflow_profile import get_workflow_profile
+from falsification.diagnostic_context import compact_simulation_results
+from utils.llm_usage import llm_usage_scope
 
 class CodeGenerationAgent(BaseAgent):
     """
@@ -62,6 +69,7 @@ class CodeGenerationAgent(BaseAgent):
             Dictionary containing the generated code and metadata
         """
         self.logger.info("Generating simulation code")
+        workflow_profile = get_workflow_profile(mode)
         
         # Log blueprint / playbook usage if available
         if blueprint is not None:
@@ -99,21 +107,34 @@ class CodeGenerationAgent(BaseAgent):
         }
         
         # Use patch prompt for iteration >= 1 (second iteration and beyond)
-        if iteration is not None and iteration >= 1 and mode == "ace":
+        if iteration is not None and iteration >= 1 and workflow_profile is not None:
             self.logger.info(f"Using patch prompt for iteration {iteration} (ACE mode)")
             prompt = self._build_patch_prompt(
                 task_spec=task_spec,
                 previous_code=previous_code,
                 simulation_results=simulation_results,
                 playbook=playbook,
+                gated_feedback=feedback,
+                mode=mode,
             )
         else:
             prompt = self._build_prompt(**prompt_args)
 
+        if workflow_profile and workflow_profile.require_probe_runtime_contract:
+            contract_path = os.path.join("templates", "falsify_runtime_contract.txt")
+            try:
+                with open(contract_path, "r", encoding="utf-8") as handle:
+                    prompt = f"{prompt}\n{handle.read()}"
+            except OSError as exc:
+                raise RuntimeError(
+                    f"Falsify runtime contract is required but unavailable: {exc}"
+                ) from exc
+
         # Call LLM to generate code
         # Use medium effort for initial generation to reduce timeout risk
         # Self-loop will improve the code quality in subsequent iterations
-        llm_response = self._call_llm(prompt, reasoning={"effort": "medium"})
+        with llm_usage_scope(stage="code_generation.generate"):
+            llm_response = self._call_llm(prompt, reasoning={"effort": "medium"})
         
         # Extract code from the response
         # Since code generation typically produces Python code rather than JSON,
@@ -151,6 +172,17 @@ class CodeGenerationAgent(BaseAgent):
             output_dir=output_dir,
             iteration=iteration
         )
+
+        contract_violations = self._workflow_contract_violations(code, task_spec)
+        if contract_violations and previous_code:
+            self.logger.error(
+                "Generated code violated workflow contract; preserving previous code: %s",
+                "; ".join(contract_violations),
+            )
+            if isinstance(previous_code, dict):
+                code = next(iter(previous_code.values()))
+            elif isinstance(previous_code, str):
+                code = previous_code
         
         # Generate a summary of the code
         code_summary = self._generate_code_summary(code)
@@ -249,7 +281,19 @@ class CodeGenerationAgent(BaseAgent):
             llm_issues = self._perform_code_quality_check(improved_code, task_spec, model_plan, mode)
             
             # Merge all issues
-            issues = ast_issues + llm_issues
+            contract_issues = [
+                {
+                    "type": "WORKFLOW_CONTRACT_VIOLATION",
+                    "severity": "critical",
+                    "description": violation,
+                    "location": "calibration/objective workflow",
+                    "recommendation": "Preserve the hard workflow contract exactly.",
+                }
+                for violation in self._workflow_contract_violations(
+                    improved_code, task_spec
+                )
+            ]
+            issues = ast_issues + llm_issues + contract_issues
             
             # If no issues found, we're done
             if not issues:
@@ -270,6 +314,7 @@ class CodeGenerationAgent(BaseAgent):
                 self.logger.info(f"Initial code has {critical_issues_count_before} critical issues")
             
             # Improve the code based on issues
+            code_before_improvement = improved_code
             improved_code = self._improve_code_based_on_issues(
                 code=improved_code,
                 issues=issues,
@@ -349,23 +394,33 @@ class CodeGenerationAgent(BaseAgent):
                 current_total_issues=total_issues_after,
                 previous_total_issues=total_issues_before
             )
+
+            candidate_accepted, rejection_reasons = self._validate_improvement_candidate(
+                original_code=code_before_improvement,
+                candidate_code=improved_code,
+                critical_issues_before=critical_issues_before,
+                critical_issues_after=critical_issues_after,
+                task_spec=task_spec,
+            )
+            if not candidate_accepted:
+                is_degraded = True
+                for reason in rejection_reasons:
+                    self.logger.warning("Code improvement rejected: %s", reason)
             
             if is_degraded:
                 self.logger.warning(f"Iteration {attempt}: Code degradation detected, reverting to best code for next iteration")
                 # Revert to best code for next iteration
                 improved_code = best_code
             else:
-                # Update best code if quality improved or maintained (prioritize later versions)
-                # If issues decreased: clear improvement
-                # If issues same but not degraded: prioritize later version (may have other improvements)
+                # A candidate reaches this branch only after passing all full-file,
+                # compatibility, smoke, and critical-issue gates.
                 if critical_issues_count_after < best_issues_count:
                     self.logger.info(f"Iteration {attempt}: Code quality improved ({best_issues_count} -> {critical_issues_count_after} critical issues)")
                     best_code = improved_code
                     best_issues_count = critical_issues_count_after
                     best_iteration = attempt
                 elif critical_issues_count_after == best_issues_count:
-                    # Issues count same, but prefer later version (may have other improvements like new features, better structure, non-critical fixes)
-                    self.logger.info(f"Iteration {attempt}: Code quality maintained ({critical_issues_count_after} critical issues), updating to latest version (may contain additional improvements)")
+                    self.logger.info(f"Iteration {attempt}: Code quality maintained ({critical_issues_count_after} critical issues); all acceptance gates passed")
                     best_code = improved_code
                     best_issues_count = critical_issues_count_after
                     best_iteration = attempt
@@ -385,6 +440,269 @@ class CodeGenerationAgent(BaseAgent):
             self.logger.info("Returning original/initial code (no improvements made)")
         
         return best_code
+
+    def _validate_improvement_candidate(
+        self,
+        original_code: str,
+        candidate_code: str,
+        critical_issues_before: List[Dict[str, Any]],
+        critical_issues_after: List[Dict[str, Any]],
+        task_spec: Optional[Dict[str, Any]] = None,
+    ) -> tuple[bool, List[str]]:
+        """Apply hard acceptance gates to a full-file sanitizer response."""
+        reasons: List[str] = []
+        reasons.extend(self._workflow_contract_violations(candidate_code, task_spec or {}))
+
+        # A sanitizer response is a full-file replacement. Large shrinkage is
+        # therefore evidence that the model returned a snippet, even when that
+        # snippet happens to be valid Python.
+        original_size = max(len(original_code), 1)
+        size_ratio = len(candidate_code) / original_size
+        original_lines = max(len(original_code.splitlines()), 1)
+        line_ratio = len(candidate_code.splitlines()) / original_lines
+        if size_ratio < 0.80 or line_ratio < 0.80:
+            reasons.append(
+                "candidate is abnormally shorter than the original "
+                f"(characters={size_ratio:.1%}, lines={line_ratio:.1%}; minimum=80%)"
+            )
+
+        try:
+            candidate_inventory = self._code_inventory(candidate_code)
+        except SyntaxError as exc:
+            reasons.append(
+                f"candidate cannot be inventoried because it is invalid Python: {exc}"
+            )
+            return False, reasons
+
+        # A sanitizer is commonly invoked precisely because the original file is
+        # truncated or otherwise invalid Python.  Failure to parse that broken
+        # baseline must not be attributed to the repaired candidate.  In that
+        # case the size, candidate inventory, critical-issue, and smoke gates
+        # still apply; only AST-derived baseline compatibility comparisons are
+        # unavailable.
+        try:
+            original_inventory = self._code_inventory(original_code)
+        except SyntaxError:
+            original_inventory = None
+            self.logger.info(
+                "Original code is invalid Python; skipping AST-derived baseline "
+                "inventory comparisons for this repair candidate"
+            )
+
+        if original_inventory is not None:
+            missing_symbols = sorted(
+                original_inventory["public_symbols"]
+                - candidate_inventory["public_symbols"]
+            )
+            if missing_symbols:
+                reasons.append(
+                    "candidate removed public classes/functions: "
+                    + ", ".join(missing_symbols[:20])
+                )
+
+        issue_text = " ".join(
+            f"{issue.get('type', '')} {issue.get('description', '')} "
+            f"{issue.get('location', '')} {issue.get('recommendation', '')}"
+            for issue in critical_issues_before
+        ).lower()
+        if original_inventory is not None:
+            missing_imports = sorted(
+                binding
+                for binding in (
+                    original_inventory["used_imports"]
+                    - candidate_inventory["imports"]
+                )
+                if binding.lower() not in issue_text
+            )
+            if missing_imports:
+                reasons.append(
+                    "candidate removed still-required import bindings: "
+                    + ", ".join(missing_imports[:20])
+                )
+
+            missing_cli_flags = sorted(
+                original_inventory["cli_flags"] - candidate_inventory["cli_flags"]
+            )
+            if missing_cli_flags:
+                reasons.append(
+                    "candidate removed CLI options: "
+                    + ", ".join(missing_cli_flags[:20])
+                )
+        if not candidate_inventory["has_main"]:
+            reasons.append("candidate has no top-level main() function")
+        if not candidate_inventory["calls_main"]:
+            reasons.append("candidate has no top-level main() entry call")
+
+        new_critical = self._find_new_critical_issues(
+            critical_issues_before, critical_issues_after
+        )
+        if len(critical_issues_after) > len(critical_issues_before):
+            reasons.append(
+                "critical issue count increased "
+                f"({len(critical_issues_before)} -> {len(critical_issues_after)})"
+            )
+        if new_critical:
+            reasons.append(
+                "candidate introduced new critical issues: "
+                + "; ".join(self._format_issue(issue) for issue in new_critical[:10])
+            )
+
+        # Avoid executing an obviously invalid candidate. The smoke subprocess
+        # imports the program and exercises its documented CLI help path without
+        # reading task data or starting calibration.
+        if not reasons:
+            smoke_ok, smoke_detail = self._run_candidate_smoke_test(candidate_code)
+            if not smoke_ok:
+                reasons.append(f"import/CLI smoke test failed: {smoke_detail}")
+
+        return not reasons, reasons
+
+    @staticmethod
+    def _workflow_contract_violations(
+        code: str, task_spec: Dict[str, Any]
+    ) -> List[str]:
+        """Return deterministic violations of experiment-level invariants."""
+        contract = task_spec.get("workflow_contract", {})
+        violations: List[str] = []
+        if contract.get("preserve_calibrator_family") == "sbi":
+            if re.search(r"class\s+SBICalibrator\s*\(\s*RandomSearchCalibrator", code):
+                violations.append("SBI calibrator was replaced by a random-search facade")
+            if not re.search(r"class\s+SBICalibrator\s*\(\s*Calibrator\s*\)", code):
+                violations.append("standalone SBICalibrator(Calibrator) is missing")
+            if "from sbi.inference import NPE" not in code:
+                violations.append("SBI NPE implementation/import is missing")
+            if not re.search(
+                r"calibrator\s*=\s*get_calibrator\(\s*[\"']sbi[\"']", code
+            ):
+                violations.append("main workflow no longer selects the sbi calibrator")
+        if contract.get("objective_scope") == "rating":
+            if "MAE_stars" not in code:
+                violations.append("rating-only primary metric MAE_stars is missing")
+        return violations
+
+    @staticmethod
+    def _code_inventory(code: str) -> Dict[str, Any]:
+        tree = ast.parse(code)
+        public_symbols = {
+            node.name
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and not node.name.startswith("_")
+        }
+        imports = set()
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                imports.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                imports.update(alias.asname or alias.name for alias in node.names)
+
+        loaded_names = {
+            node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+        }
+        cli_flags = {
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and re.fullmatch(r"--[a-zA-Z0-9][a-zA-Z0-9_-]*", node.value)
+        }
+        calls_main = any(
+            isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id == "main"
+            for node in tree.body
+        )
+        return {
+            "public_symbols": public_symbols,
+            "imports": imports,
+            "used_imports": imports & loaded_names,
+            "cli_flags": cli_flags,
+            "has_main": "main" in public_symbols,
+            "calls_main": calls_main,
+        }
+
+    @staticmethod
+    def _normalise_issue_text(value: Any) -> str:
+        text = re.sub(r"\bline\s*\d+\b", "line", str(value or "").lower())
+        text = re.sub(r"\d+", "#", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    def _issues_match(self, before: Dict[str, Any], after: Dict[str, Any]) -> bool:
+        if str(before.get("type", "")).upper() != str(after.get("type", "")).upper():
+            return False
+        before_location = self._normalise_issue_text(before.get("location"))
+        after_location = self._normalise_issue_text(after.get("location"))
+        if before_location and after_location and (
+            before_location == after_location
+            or before_location in after_location
+            or after_location in before_location
+        ):
+            return True
+        before_description = self._normalise_issue_text(before.get("description"))
+        after_description = self._normalise_issue_text(after.get("description"))
+        return difflib.SequenceMatcher(
+            None, before_description, after_description
+        ).ratio() >= 0.60
+
+    def _find_new_critical_issues(
+        self,
+        before: List[Dict[str, Any]],
+        after: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        return [
+            issue
+            for issue in after
+            if not any(self._issues_match(previous, issue) for previous in before)
+        ]
+
+    @staticmethod
+    def _format_issue(issue: Dict[str, Any]) -> str:
+        return (
+            f"[{issue.get('type', 'UNKNOWN')}] "
+            f"{issue.get('description') or issue.get('location') or 'unspecified'}"
+        )
+
+    def _run_candidate_smoke_test(self, code: str, timeout_seconds: int = 30) -> tuple[bool, str]:
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        smoke_env = os.environ.copy()
+        smoke_env["PYTHONDONTWRITEBYTECODE"] = "1"
+        existing_pythonpath = smoke_env.get("PYTHONPATH")
+        smoke_env["PYTHONPATH"] = (
+            project_root
+            if not existing_pythonpath
+            else os.pathsep.join((project_root, existing_pythonpath))
+        )
+        temporary_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".py", encoding="utf-8", delete=False
+            ) as handle:
+                handle.write(code)
+                temporary_path = handle.name
+            result = subprocess.run(
+                [sys.executable, temporary_path, "--help"],
+                cwd=project_root,
+                env=smoke_env,
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+                check=False,
+            )
+            if result.returncode != 0:
+                detail = (result.stderr or result.stdout or "no subprocess output").strip()
+                return False, f"exit={result.returncode}: {detail[-1000:]}"
+            return True, "passed"
+        except subprocess.TimeoutExpired:
+            return False, f"timed out after {timeout_seconds}s"
+        except OSError as exc:
+            return False, str(exc)
+        finally:
+            if temporary_path:
+                try:
+                    os.unlink(temporary_path)
+                except OSError:
+                    pass
     
     def _detect_code_degradation(
         self,
@@ -509,7 +827,7 @@ class CodeGenerationAgent(BaseAgent):
         """
         self.logger.info("Step 3: Performing LLM Linter check (high-level issues)")
 
-        if mode in ("odd", "persona", "ace"):
+        if get_workflow_profile(mode) is not None or mode in ("odd", "persona"):
             # Extract blueprint from task_spec (excluding file_summaries)
             if "data_analysis_result" in task_spec:
                 blueprint = {
@@ -539,7 +857,7 @@ class CodeGenerationAgent(BaseAgent):
                 except Exception as e:
                     self.logger.error(f"Error loading mask_adoption_patch.txt: {e}")
             
-            elif 'user rates' in task_description or 'daily mobility trajectories' in task_description:
+            elif 'user rates' in task_description:
                 self.logger.info("Loading LLM calling patch for code quality check")
                 try:
                     # Get project root directory (3 levels up from agents/code_generation_ace/agent.py)
@@ -659,7 +977,8 @@ class CodeGenerationAgent(BaseAgent):
         
         # Call LLM to perform linter check
         # Use low effort for linting task (analysis only, no code generation)
-        llm_response = self._call_llm(prompt, reasoning={"effort": "low"})
+        with llm_usage_scope(stage="code_generation.linter"):
+            llm_response = self._call_llm(prompt, reasoning={"effort": "low"})
         
         # Parse LLM response
         try:
@@ -741,7 +1060,8 @@ class CodeGenerationAgent(BaseAgent):
         """
         
         # Call LLM to check feedback implementation
-        llm_response = self._call_llm(prompt)
+        with llm_usage_scope(stage="code_generation.feedback_check"):
+            llm_response = self._call_llm(prompt)
         # llm_response = self._call_llm(prompt, reasoning={"effort": "high"})
         
         # Parse LLM response
@@ -836,7 +1156,8 @@ class CodeGenerationAgent(BaseAgent):
         """
         
         # Call LLM to check historical issues
-        llm_response = self._call_llm(prompt)
+        with llm_usage_scope(stage="code_generation.history_check"):
+            llm_response = self._call_llm(prompt)
         # llm_response = self._call_llm(prompt, reasoning={"effort": "high"})
         
         # Parse LLM response
@@ -944,7 +1265,7 @@ class CodeGenerationAgent(BaseAgent):
                 except Exception as e:
                     self.logger.error(f"Error loading mask_adoption_patch.txt: {e}")
             
-            elif 'user rates' in task_description or 'human trait scores' in task_description or 'daily mobility trajectories' in task_description:
+            elif 'user rates' in task_description or 'human trait scores' in task_description:
                 self.logger.info("Loading LLM calling patch for code improvement")
                 try:
                     # Get project root directory (3 levels up from agents/code_generation_ace/agent.py)
@@ -1039,13 +1360,24 @@ class CodeGenerationAgent(BaseAgent):
         - Add proper error handling for file operations
         - Add zero-division checks
         
-        Return the fixed code as pure Python code. Do not include any explanation or markdown formatting.
+        FULL-FILE OUTPUT CONTRACT (MANDATORY):
+        - Return the ENTIRE corrected standalone Python program, not a patch, diff,
+          excerpt, replacement function, or partial snippet.
+        - Preserve every unchanged import, class, function, CLI option, and entry point.
+        - Do not omit unchanged sections and do not use placeholders such as
+          "rest of code unchanged" or "omitted for brevity".
+        - The response must be directly usable as a complete replacement for the
+          Generated code above.
+
+        Return the complete fixed standalone program as pure Python code. Do not
+        include any explanation or markdown formatting.
         """
         
         # Call LLM to improve code
         # Use low effort for code fixing - these are straightforward fixes to low-level issues
         # Multiple iterations provide quality control, so low effort is sufficient
-        llm_response = self._call_llm(prompt, reasoning={"effort": "low"})
+        with llm_usage_scope(stage="code_generation.improve"):
+            llm_response = self._call_llm(prompt, reasoning={"effort": "low"})
         
         # Extract improved code
         improved_code = self._extract_code(llm_response)
@@ -1084,7 +1416,8 @@ class CodeGenerationAgent(BaseAgent):
         
         # Call LLM to fix syntax
         # Use low effort for syntax fixing (relatively simple task)
-        llm_response = self._call_llm(prompt, reasoning={"effort": "low"})
+        with llm_usage_scope(stage="code_generation.syntax_fix"):
+            llm_response = self._call_llm(prompt, reasoning={"effort": "low"})
         
         # Extract fixed code
         fixed_code = self._extract_code(llm_response)
@@ -1191,7 +1524,13 @@ class CodeGenerationAgent(BaseAgent):
             
             # Format playbook as string (only for ACE/ALPHA mode)
             playbook_str = "No playbook provided"
-            if mode in ["ace", "alpha"] and playbook:
+            workflow_profile = get_workflow_profile(mode)
+            may_consume_playbook = (
+                workflow_profile.consume_shared_playbook
+                if workflow_profile is not None
+                else mode == "alpha"
+            )
+            if may_consume_playbook and playbook:
                 try:
                     playbook_str = json.dumps(playbook, indent=2, ensure_ascii=False)
                 except TypeError:
@@ -1217,7 +1556,7 @@ class CodeGenerationAgent(BaseAgent):
             data_path_str = f"Data directory: {data_path}" if data_path else "No data path provided"
             
             # For ACE/ALPHA mode, use template with blue_print, file_summaries, and playbook placeholders
-            if mode in ["ace", "alpha"]:
+            if workflow_profile is not None or mode == "alpha":
                 # Check task description for task-specific coding_patch replacement
                 task_description = task_spec.get('description', '').lower()
                 coding_patch_content = ""
@@ -1301,7 +1640,7 @@ class CodeGenerationAgent(BaseAgent):
                     except Exception as e:
                         self.logger.error(f"Error loading mask_adoption_patch.txt: {e}")
                         # Continue without the patch if file cannot be loaded
-                elif 'user rates' in task_description or 'daily mobility trajectories' in task_description:
+                elif 'user rates' in task_description:
                     self.logger.info("Adding use modelling llm calling patch to prompt")
                     try:
                         # Get project root directory (3 levels up from agents/code_generation_ace/agent.py)
@@ -1384,6 +1723,8 @@ class CodeGenerationAgent(BaseAgent):
         previous_code: Optional[Dict[str, str]] = None,
         simulation_results: Optional[Dict[str, Any]] = None,
         playbook: Optional[Dict[str, Any]] = None,
+        gated_feedback: Optional[Dict[str, Any]] = None,
+        mode: str = "ace",
     ) -> str:
         """
         Build a patch-level prompt for code generation (iteration >= 1).
@@ -1555,7 +1896,7 @@ class CodeGenerationAgent(BaseAgent):
            import os
            PROJECT_ROOT = os.environ.get("PROJECT_ROOT")
            DATA_PATH = os.environ.get("DATA_PATH")
-           DATA_DIR = os.path.join(PROJECT_ROOT, DATA_PATH)
+           DATA_DIR = os.path.join(PROJECT_ROOT or "", DATA_PATH or "")
         
         2. Orchestrator Pipeline (MUST PRESERVE MAIN FLOW):
             main() must call, in strict order: parse_cli() (optional) → load_data() → build_network_and_agents() → holdout_split() → calibrator.fit() → simulator.rollout() → evaluator.compute_metrics() → save_results()
@@ -1599,6 +1940,7 @@ class CodeGenerationAgent(BaseAgent):
         # Extract blueprint from task_spec (excluding file_summaries)
         blueprint = {k: v for k, v in task_spec.get("data_analysis_result", {}).items() if k != "file_summaries"}
         blueprint_str = json.dumps(blueprint, indent=2, ensure_ascii=False) if blueprint else "No blueprint provided"
+        workflow_contract = task_spec.get("workflow_contract", {})
         
         # Format previous code
         previous_code_str = "No previous code available"
@@ -1612,10 +1954,17 @@ class CodeGenerationAgent(BaseAgent):
                 previous_code_str = previous_code
         
         # Format simulation results
+        if mode == "falsify":
+            simulation_results = compact_simulation_results(simulation_results)
         simulation_results_str = json.dumps(simulation_results, indent=2, default=str, ensure_ascii=False) if simulation_results else "No simulation results provided"
         
-        # Transform and format playbook
-        transformed_playbook = self._transform_playbook_for_prompt(playbook)
+        # Falsify mode must consume only diagnoses admitted by the current gate.
+        # The shared ACE playbook may contain historical, ungated diagnoses.
+        workflow_profile = get_workflow_profile(mode)
+        if workflow_profile and not workflow_profile.consume_shared_playbook:
+            transformed_playbook = {"strategies": gated_feedback or {}}
+        else:
+            transformed_playbook = self._transform_playbook_for_prompt(playbook)
         playbook_str = json.dumps(transformed_playbook, indent=2, ensure_ascii=False)
         
         # Check task description for task-specific coding_patch replacement
@@ -1649,6 +1998,13 @@ class CodeGenerationAgent(BaseAgent):
         prompt = prompt.replace("{previous_code}", previous_code_str)
         prompt = prompt.replace("{simulation_results}", simulation_results_str)
         prompt = prompt.replace("{playbook}", playbook_str)
+        if workflow_contract:
+            prompt += (
+                "\n\n# HARD EXPERIMENT WORKFLOW CONTRACT\n"
+                + json.dumps(workflow_contract, indent=2, ensure_ascii=False)
+                + "\nThis contract overrides optional refactors. Preserve the requested "
+                  "calibrator implementation and optimize only the declared objective."
+            )
         
         return prompt
     

@@ -20,6 +20,12 @@ Write EXACTLY these JSON files (no extra required result files):
 
 **Fixed schemas**
 
+**LLMob input compatibility**
+
+* `poi_category_192021_longitude_latitude.json` is a category-keyed object whose rows are `[latitude, longitude, "Category#id"]`; latitude and longitude are commonly JSON strings, not numeric JSON scalars. Parse finite numeric strings with `float(...)` instead of rejecting them by Python type.
+* POI categories and identifiers may contain spaces; preserve the full text before `#`.
+* `1921Y.json` timestamps may use one- or two-digit hour/minute/second fields (for example `0:00:00`). Validate numeric ranges after parsing; do not require zero padding on input.
+
 * `calibrated_parameters.json` (JSON object):
   * keys: `best_parameters` (object), `best_objective` (number), `objective_definition` (string), `seed` (int), `meta` (object)
 

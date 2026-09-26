@@ -10,9 +10,13 @@ import yaml
 import json
 from typing import Dict, Any, Optional
 from orchestration.container import AgentContainer
-from utils.llm_utils import load_api_key
+from orchestration.workflow_profile import get_workflow_profile
+from utils.llm_utils import LLMCallError, load_api_key
+from utils.llm_usage import configure_llm_usage, set_llm_iteration
 from dependency_injector.wiring import Provide, inject
 from core.playbook_manager import PlaybookManager
+from falsification import FalsificationPipeline
+from falsification.iteration import FalsifyIterationController
 
 def setup_logging(output_path: Optional[str] = None, debug: bool = False):
     """Configure logging for the application."""
@@ -52,12 +56,38 @@ def parse_arguments():
     parser.add_argument('--output', type=str, default='./output', help='Path to output directory')
     parser.add_argument('--config', type=str, default='./config.yaml', help='Path to configuration file')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
-    parser.add_argument('--mode', type=str.lower, default='persona', choices=['lite', 'medium', 'persona', 'blueprint', 'odd', 'ace', 'alpha', 'gsim', 'random', 'srr'], help='Workflow mode')
+    parser.add_argument('--mode', type=str.lower, default='persona', choices=['lite', 'medium', 'persona', 'blueprint', 'odd', 'ace', 'falsify', 'alpha', 'gsim', 'random', 'srr'], help='Workflow mode')
     parser.add_argument('--selfloop', type=int, default=3, help='Number of self-checking loop attempts for code generation')
     parser.add_argument('--persisted-data-analysis-file', type=str, help='Path to persisted data analysis file (task_spec.json) to skip data analysis phase')
     parser.add_argument('--persisted-code-file', type=str, help='Path to persisted code file (simulation_code_iter_N.py) to skip data analysis and initial code generation')
+    parser.add_argument(
+        '--persisted-code-iteration',
+        type=int,
+        help='Explicit outer-iteration index for a persisted starting simulator.',
+    )
     parser.add_argument('--auto', action='store_true', default=False, help='Enable automatic mode; when False, user will be prompted to input feedback manually in each iteration')
     parser.add_argument('--iterations', type=int, default=3, help='Maximum number of iterations')
+    parser.add_argument('--falsify-simulation-budget', type=int, help='Maximum baseline/probe simulator calls per falsify iteration (overrides config)')
+    parser.add_argument(
+        '--falsify-stagnation-patience',
+        type=int,
+        help=(
+            'Best-so-far fidelity stagnation patience for falsify mode '
+            '(overrides config; default remains the configured value)'
+        ),
+    )
+    parser.add_argument(
+        '--falsify-focus',
+        choices=['all', 'rating'],
+        default='all',
+        help='Restrict falsify diagnosis and repair to one task objective.',
+    )
+    parser.add_argument(
+        '--preserve-calibrator',
+        choices=['none', 'sbi'],
+        default='none',
+        help='Reject generated simulators that change the requested calibrator family.',
+    )
     
     return parser.parse_args()
 
@@ -98,7 +128,6 @@ def setup_container(config_path: str) -> AgentContainer:
         "agents.code_generation_odd.agent",
         "agents.code_generation_ace.agent",
         "agents.code_generation_alpha.agent",
-        "agents.code_generation_srr.agent",
         "agents.model_planning.agent",
         "agents.code_verification.agent",
         "agents.simulation_execution.agent",
@@ -108,7 +137,9 @@ def setup_container(config_path: str) -> AgentContainer:
         "agents.feedback_generation.agent",
         "agents.feedback_generation_odd.agent",
         "agents.feedback_generation_alpha.agent",
-        "agents.feedback_generation_srr.agent",
+        "agents.feedback_generation_falsify.agent",
+        "agents.hypothesis_generation.agent",
+        "agents.falsification.agent",
         "agents.iteration_control.agent",
         "agents.iteration_control_ace.agent",
         "agents.base_agent",
@@ -260,11 +291,11 @@ def save_generated_code(output_path: str, generated_code: Dict[str, Any], iterat
         raise
 
 def load_persisted_data_analysis(file_path: str) -> Dict[str, Any]:
-    """Load persisted data analysis from JSON file."""
+    """Load a blueprint and persist changed legacy samples before prompt use."""
+    from utils.schema_sampling import load_resampled_task_spec
     logger = logging.getLogger()
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            task_spec = json.load(f)
+        task_spec = load_resampled_task_spec(file_path)
         logger.info(f"Loaded persisted data analysis from: {file_path}")
         return task_spec
     except Exception as e:
@@ -955,6 +986,7 @@ def run_data_analysis_test(
     
     logger.info(f"Starting DataAnalysisOddAgent test in {args.mode.upper()} mode")
     logger.info(f"Auto mode: {args.auto}, Max iterations: {args.iterations}")
+    workflow_profile = get_workflow_profile(args.mode)
     
     try:
         # Set up output path in container
@@ -964,7 +996,10 @@ def run_data_analysis_test(
         # Playbook is shared across all tasks, stored in project root /playbook_storage
         playbook = None
         playbook_manager = None
-        if getattr(args, "mode", None) in ["odd", "ace", "alpha"]:
+        if (
+            args.mode in ["odd", "alpha"]
+            or (workflow_profile and workflow_profile.consume_shared_playbook)
+        ):
             # Use default storage root (project_root/playbook_storage)
             playbook_manager = PlaybookManager()
             playbook = playbook_manager.playbook
@@ -972,12 +1007,23 @@ def run_data_analysis_test(
         
         # Get agent instances - include all agents needed for iterative workflow
         # Select agents based on mode
-        if args.mode == "ace":
-            data_analysis_agent = agent_container.data_analysis_ace_agent()
-            code_generation_agent = agent_container.code_generation_ace_agent()
-            simulation_execution_agent = agent_container.simulation_execution_ace_agent()
-            feedback_generation_agent = agent_container.feedback_generation_ace_agent()
-            iteration_control_agent = agent_container.iteration_control_ace_agent()
+        if workflow_profile is not None:
+            data_analysis_agent = getattr(
+                agent_container, workflow_profile.data_analysis_provider
+            )()
+            code_generation_agent = getattr(
+                agent_container, workflow_profile.code_generation_provider
+            )()
+            simulation_execution_agent = getattr(
+                agent_container, workflow_profile.simulation_execution_provider
+            )()
+            feedback_generation_agent = getattr(
+                agent_container, workflow_profile.feedback_generation_provider
+            )()
+            iteration_control_agent = getattr(
+                agent_container, workflow_profile.iteration_control_provider
+            )()
+            logger.info("Loaded centralized workflow profile: %s", workflow_profile.name)
         elif args.mode == "alpha":
             data_analysis_agent = agent_container.data_analysis_ace_agent()
             # For alpha mode, override the prompt template to use data_analysis_alpha_prompt.txt
@@ -1029,6 +1075,44 @@ def run_data_analysis_test(
             "feedback_generation": feedback_generation_agent,
             "iteration_control": iteration_control_agent
         }
+
+        falsification_pipeline = None
+        falsify_iteration_controller = None
+        if workflow_profile and workflow_profile.enable_falsification:
+            with open(args.config, "r", encoding="utf-8") as handle:
+                falsification_config = (yaml.safe_load(handle) or {}).get(
+                    "falsification", {}
+                )
+            simulation_budget = (
+                args.falsify_simulation_budget
+                if args.falsify_simulation_budget is not None
+                else falsification_config.get("simulation_call_budget", 40)
+            )
+            falsification_pipeline = FalsificationPipeline(
+                hypothesis_agent=agent_container.hypothesis_generation_agent(),
+                falsification_agent=agent_container.falsification_agent(),
+                simulation_call_budget=simulation_budget,
+                execution_timeout=falsification_config.get("execution_timeout", 300),
+                max_sequential_probes=falsification_config.get(
+                    "max_sequential_probes", 3
+                ),
+                per_issue_simulation_call_budget=falsification_config.get(
+                    "per_issue_simulation_call_budget", 30
+                ),
+                max_hypothesis_revisions=falsification_config.get(
+                    "max_hypothesis_revisions", 1
+                ),
+            )
+            falsify_iteration_controller = FalsifyIterationController(
+                patience=(
+                    args.falsify_stagnation_patience
+                    if args.falsify_stagnation_patience is not None
+                    else falsification_config.get("stagnation_patience", 2)
+                ),
+                minimum_improvement=falsification_config.get(
+                    "minimum_fidelity_improvement", 0.0
+                ),
+            )
         
         # Initialize state management (similar to workflow_manager)
         state = {
@@ -1082,7 +1166,16 @@ def run_data_analysis_test(
             # Extract iteration number from filename (e.g., simulation_code_iter_1.py -> 1)
             code_filename = os.path.basename(args.persisted_code_file)
             iteration_match = re.search(r'simulation_code_iter_(\d+)\.py', code_filename)
-            if iteration_match:
+            if args.persisted_code_iteration is not None:
+                if args.persisted_code_iteration < 0:
+                    raise ValueError("--persisted-code-iteration must be non-negative")
+                persisted_iteration = args.persisted_code_iteration
+                logger.info(
+                    "Using explicit persisted iteration %d for filename: %s",
+                    persisted_iteration,
+                    code_filename,
+                )
+            elif iteration_match:
                 persisted_iteration = int(iteration_match.group(1))
                 logger.info(f"Detected iteration number {persisted_iteration} from filename: {code_filename}")
             else:
@@ -1225,6 +1318,47 @@ def run_data_analysis_test(
             else:
                 logger.info(f"  ℹ No historical fix log found, starting with empty log")
                 historical_fix_log = {}
+
+            # A persisted falsify simulator resumes *after* the preceding outer
+            # iteration. Restore deterministic best-so-far/stagnation state so
+            # a restarted process cannot promote the resumed (possibly worse)
+            # simulator to a fresh best merely because controller memory reset.
+            if (
+                workflow_profile
+                and workflow_profile.use_fidelity_stagnation_control
+                and falsify_iteration_controller is not None
+                and persisted_iteration > 0
+            ):
+                history_path = os.path.join(
+                    args.output,
+                    f"falsify_fidelity_history_iter_{persisted_iteration - 1}.json",
+                )
+                if os.path.isfile(history_path):
+                    try:
+                        with open(history_path, "r", encoding="utf-8") as handle:
+                            restored_history = json.load(handle)
+                        if isinstance(restored_history, list) and restored_history:
+                            falsify_iteration_controller.history = restored_history
+                            latest = restored_history[-1]
+                            best_value = latest.get("best_value")
+                            best_iteration = latest.get("best_iteration")
+                            stagnation_rounds = latest.get("stagnation_rounds", 0)
+                            if isinstance(best_value, (int, float)):
+                                falsify_iteration_controller.best_value = float(best_value)
+                            if isinstance(best_iteration, int):
+                                falsify_iteration_controller.best_iteration = best_iteration
+                            falsify_iteration_controller.stagnation_rounds = max(
+                                0, int(stagnation_rounds)
+                            )
+                            logger.info(
+                                "  ✓ Restored falsify fidelity history through "
+                                f"iteration {persisted_iteration - 1}"
+                            )
+                    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+                        logger.warning(
+                            f"Failed to restore falsify fidelity history from "
+                            f"{history_path}: {exc}"
+                        )
             
             logger.info(f"State restoration complete. Ready to continue from iteration {persisted_iteration}.")
             logger.info(f"Persisted code loaded successfully as iter_{persisted_iteration}, will skip code generation and continue with simulation execution and feedback generation")
@@ -1312,6 +1446,35 @@ def run_data_analysis_test(
                     mode=args.mode
                 )
         
+        if args.mode == "falsify" and (
+            args.falsify_focus != "all" or args.preserve_calibrator != "none"
+        ):
+            task_spec = dict(task_spec)
+            task_spec["workflow_contract"] = {
+                "objective_scope": args.falsify_focus,
+                "primary_fidelity_metric": (
+                    "MAE_stars" if args.falsify_focus == "rating" else None
+                ),
+                "preserve_calibrator_family": (
+                    args.preserve_calibrator
+                    if args.preserve_calibrator != "none"
+                    else None
+                ),
+                "rating_only_policy": (
+                    "Diagnose, falsify, and repair only mechanisms that can change "
+                    "predicted star ratings or MAE_stars. Text generation may be "
+                    "inspected only when it is an executable upstream cause of a "
+                    "rating error. Do not optimize review-text metrics."
+                    if args.falsify_focus == "rating"
+                    else None
+                ),
+            }
+            logger.info(
+                "Applied falsify workflow contract: focus=%s, calibrator=%s",
+                args.falsify_focus,
+                args.preserve_calibrator,
+            )
+
         logger.info("Data analysis and task spec generation completed successfully")
         
         # Save task_spec (after all branches)
@@ -1338,7 +1501,7 @@ def run_data_analysis_test(
         # ==================================================
         # BLUEPRINT FEEDBACK AFTER DATA ANALYSIS (ACE/ALPHA mode only)
         # ==================================================
-        if args.mode in ["ace", "alpha", "gsim", "random"]:
+        if workflow_profile is not None or args.mode in ["alpha", "gsim", "random"]:
             logger.info("=" * 50)
             logger.info("BLUEPRINT FEEDBACK AFTER DATA ANALYSIS (ACE mode)")
             logger.info("=" * 50)
@@ -1472,6 +1635,7 @@ def run_data_analysis_test(
                 logger.info("Alpha mode: Initialized new best_simulator_info (no previous history found)")
         
         while current_iteration < args.iterations:
+            set_llm_iteration(current_iteration)
             logger.info("=" * 50)
             logger.info(f"STARTING ITERATION {current_iteration + 1}/{args.iterations}")
             logger.info("=" * 50)
@@ -1486,12 +1650,60 @@ def run_data_analysis_test(
                 skip_initial_code_generation and 
                 (persisted_iteration_number is not None and current_iteration == persisted_iteration_number)
             )
-            
-            if not should_skip_code_gen:
+
+            falsify_has_repairs = any(
+                isinstance(value, dict) and value.get("diagnosis_status") in {
+                    "DIRECT_DIAGNOSIS", "FALSIFICATION_SUPPORTED"
+                }
+                for value in (state.get("feedback") or {}).values()
+            )
+            should_reuse_unchanged_falsify_code = (
+                workflow_profile is not None
+                and workflow_profile.reuse_code_without_admitted_diagnoses
+                and not should_skip_code_gen
+                and current_iteration > 0
+                and not falsify_has_repairs
+            )
+
+            if should_reuse_unchanged_falsify_code:
+                previous_code_dict = code_memory[current_iteration - 1]
+                previous_filename = f"simulation_code_iter_{current_iteration - 1}.py"
+                unchanged_code = (
+                    previous_code_dict[previous_filename]
+                    if isinstance(previous_code_dict, dict)
+                    else previous_code_dict
+                )
+                state["generated_code"] = {
+                    "code": unchanged_code,
+                    "code_summary": "No diagnosis passed the falsification gate; simulator kept unchanged.",
+                    "simulator_description": "Unchanged from the previous iteration.",
+                    "metadata": {"mode": workflow_profile.name, "unchanged": True},
+                }
+                save_generated_code(
+                    args.output, state["generated_code"], iteration=current_iteration
+                )
+                code_memory[current_iteration] = {
+                    f"simulation_code_iter_{current_iteration}.py": unchanged_code
+                }
+                code_description_memory[current_iteration] = {
+                    f"simulator_description_iter_{current_iteration}.txt":
+                        "Unchanged from the previous iteration."
+                }
+                logger.info(
+                    "No diagnosis passed the falsification gate; reusing simulator unchanged"
+                )
+            elif not should_skip_code_gen:
                 logger.info("CODE GENERATION")
                 
                 # Select strategies for prompt BEFORE code generation (open/queued -> in_progress)
-                if playbook_manager and args.mode in ["ace", "alpha"] and current_iteration > 0:
+                if (
+                    playbook_manager
+                    and (
+                        args.mode == "alpha"
+                        or (workflow_profile and workflow_profile.consume_shared_playbook)
+                    )
+                    and current_iteration > 0
+                ):
                     logger.info("Selecting playbook strategies for code patch prompt...")
                     selected_ids = playbook_manager.select_strategies_for_prompt_simple(
                         max_count=None,  # Select all open/queued strategies
@@ -1540,7 +1752,10 @@ def run_data_analysis_test(
                     "iteration": current_iteration,
                     "simulation_results": prev_simulation_results  # Pass previous iteration's results for patch prompt
                 }
-                if args.mode in ["ace", "alpha"]:
+                if (
+                    args.mode == "alpha"
+                    or (workflow_profile and workflow_profile.consume_shared_playbook)
+                ):
                     process_kwargs["playbook"] = playbook
                 
                 # Add best_simulator_info and simulation_info_history for alpha mode
@@ -1588,6 +1803,27 @@ def run_data_analysis_test(
             # Determine code file path based on whether code was generated or loaded
             # Always use current_iteration to determine the code file path
             code_file_path = os.path.join(args.output, f"simulation_code_iter_{current_iteration}.py")
+
+            if os.environ.get("SOCIA_REVIEW_GENERATED_CODE") == "1":
+                import ast
+                import hashlib
+                from pathlib import Path
+                before_review = Path(code_file_path).read_text(encoding="utf-8")
+                save_artifact(args.output, "code_before_external_review",
+                              {"code": before_review}, iteration=current_iteration)
+                print(f"\n[CODE REVIEW GATE] Iteration {current_iteration}: {code_file_path}\n"
+                      "Review engineering contracts, then press Enter to execute.", flush=True)
+                input()
+                reviewed = Path(code_file_path).read_text(encoding="utf-8")
+                ast.parse(reviewed)
+                state["generated_code"]["code"] = reviewed
+                code_memory[current_iteration] = {f"simulation_code_iter_{current_iteration}.py": reviewed}
+                save_generated_code(args.output, state["generated_code"], iteration=current_iteration)
+                save_artifact(args.output, "external_review", {
+                    "before_sha256": hashlib.sha256(before_review.encode()).hexdigest(),
+                    "after_sha256": hashlib.sha256(reviewed.encode()).hexdigest(),
+                    "changed": reviewed != before_review,
+                }, iteration=current_iteration)
             
             # ODD mode: Skip verification, simulation, and evaluation, use placeholders
             if args.mode == "odd":
@@ -1611,7 +1847,7 @@ def run_data_analysis_test(
                 save_artifact(args.output, f"evaluation_results_iter_{current_iteration}", state["evaluation_results"])
                 logger.info(f"{args.mode.upper()} mode: Placeholders created for verification, simulation, and evaluation results")
             # ACE/ALPHA mode: Skip verification, but execute simulation
-            elif args.mode in ["ace", "alpha", "gsim", "random", "srr"]:
+            elif workflow_profile is not None or args.mode in ["alpha", "gsim", "random", "srr"]:
                 logger.info(f"{args.mode.upper()} mode: Skipping verification, but executing simulation")
                 state["verification_results"] = {
                     "placeholder": True,
@@ -1646,10 +1882,15 @@ def run_data_analysis_test(
                         with open(reuse_results_path, "r", encoding="utf-8") as f:
                             reusable_results = json.load(f)
                         reusable_metrics = reusable_results.get("simulation_metrics", {})
+                        reusable_fidelity = (
+                            FalsifyIterationController._extract_fidelity(reusable_results)
+                            if workflow_profile is not None and workflow_profile.enable_falsification
+                            else reusable_metrics.get("val_loss")
+                            if isinstance(reusable_metrics, dict) else None
+                        )
                         if (
                             reusable_results.get("execution_status") == "success"
-                            and isinstance(reusable_metrics, dict)
-                            and reusable_metrics.get("val_loss") is not None
+                            and reusable_fidelity is not None
                         ):
                             state["simulation_results"] = reusable_results
                             reused_simulation = True
@@ -1661,7 +1902,7 @@ def run_data_analysis_test(
                             logger.warning(
                                 "Requested simulation artifact reuse was rejected "
                                 f"for iteration {current_iteration}: missing successful "
-                                "execution status or val_loss"
+                                "execution status or supported fidelity metric"
                             )
                     except Exception as e:
                         logger.warning(
@@ -1924,10 +2165,21 @@ def run_data_analysis_test(
                 )
                 input()
 
+                # The optional operator gate permits externally repaired/rerun
+                # engineering artifacts to become the actual diagnostic input.
+                with open(code_file_path, encoding="utf-8") as handle:
+                    reviewed = handle.read()
+                state["generated_code"]["code"] = reviewed
+                code_memory[current_iteration] = {f"simulation_code_iter_{current_iteration}.py": reviewed}
+                result_path = os.path.join(args.output, f"simulation_results_iter_{current_iteration}.json")
+                if os.path.isfile(result_path):
+                    with open(result_path, encoding="utf-8") as handle:
+                        state["simulation_results"] = json.load(handle)
+
             # --------------------------------------------------
             # STEP 5: Blueprint Feedback (ACE/ALPHA mode only)
             # --------------------------------------------------
-            if args.mode in ["ace", "alpha", "gsim", "random"]:
+            if workflow_profile is not None or args.mode in ["alpha", "gsim", "random"]:
                 logger.info("BLUEPRINT FEEDBACK (ACE/ALPHA mode)")
                 
                 # Extract current blueprint from task_spec
@@ -1993,7 +2245,7 @@ def run_data_analysis_test(
             # In other modes with manual feedback, we collect it here first
             user_feedback_text = None
             should_stop_from_user_feedback = False  # Check for #STOP# in non-ACE modes
-            if args.mode not in ["ace", "srr"] and not args.auto:
+            if workflow_profile is None and args.mode != "srr" and not args.auto:
                 logger.info("Manual feedback mode - prompting user for feedback before LLM generation")
                 user_feedback_text = get_user_feedback(
                     logger,
@@ -2064,7 +2316,7 @@ def run_data_analysis_test(
             
             # Combine user feedback (if any) with system feedback (non-ACE modes only)
             # ACE mode user feedback is handled internally by the agent
-            if args.mode not in ["ace", "srr"] and not args.auto:
+            if workflow_profile is None and args.mode != "srr" and not args.auto:
                 combined_feedback = dict(system_feedback)
                 
                 if user_feedback_text and not should_stop_from_user_feedback:
@@ -2102,6 +2354,38 @@ def run_data_analysis_test(
             else:
                 # Auto mode or ACE mode - use system feedback as-is
                 state["feedback"] = system_feedback
+
+            if workflow_profile and workflow_profile.enable_falsification:
+                save_artifact(
+                    args.output,
+                    f"issue_analysis_iter_{current_iteration}",
+                    state["feedback"],
+                )
+                if not should_stop_from_feedback:
+                    logger.info("FALSIFICATION-BEFORE-REPAIR SUBWORKFLOW")
+                    falsification_result = falsification_pipeline.process(
+                        raw_feedback=state["feedback"],
+                        code_path=code_file_path,
+                        task_spec=task_spec,
+                        simulation_results=state["simulation_results"] or {},
+                        output_dir=args.output,
+                        iteration=current_iteration,
+                        data_path=data_path,
+                        project_root=os.environ.get("PROJECT_ROOT", os.getcwd()),
+                    )
+                    state["feedback"] = falsification_result["feedback"]
+                    state["falsification_audit"] = falsification_result["audit"]
+                    logger.info(
+                        "Falsification gate admitted %d diagnosis/diagnoses for repair",
+                        len(state["feedback"]),
+                    )
+                else:
+                    state["feedback"] = {
+                        "should_stop": True,
+                        "stop_reason": system_feedback.get(
+                            "stop_reason", "User requested stop"
+                        ),
+                    }
                 
             # Add should_stop flag to feedback if user requested stop (for consistency)
             if should_stop_from_user_feedback:
@@ -2111,7 +2395,13 @@ def run_data_analysis_test(
             save_artifact(args.output, f"feedback_iter_{current_iteration}", state["feedback"])
             
             # Convert feedback to playbook entries (ACE/ALPHA mode only)
-            if args.mode in ["ace", "alpha"] and playbook_manager:
+            if (
+                playbook_manager
+                and (
+                    args.mode == "alpha"
+                    or (workflow_profile and workflow_profile.consume_shared_playbook)
+                )
+            ):
                 feedback_to_convert = state["feedback"]
                 
                 # Check if feedback is in ACE format (dict with issue_id keys)
@@ -2175,7 +2465,13 @@ def run_data_analysis_test(
                 save_artifact(args.output, f"iteration_decision_iter_{current_iteration}", state["iteration_decision"])
                 
                 # Save iteration snapshot for playbook (checkpoint level) - this is still needed
-                if playbook_manager and args.mode in ["ace", "alpha"]:
+                if (
+                    playbook_manager
+                    and (
+                        args.mode == "alpha"
+                        or (workflow_profile and workflow_profile.consume_shared_playbook)
+                    )
+                ):
                     playbook_manager.save_iteration_snapshot(current_iteration)
                     logger.info(f"📸 Playbook iteration snapshot saved: iter_{current_iteration:03d}")
                 
@@ -2189,7 +2485,25 @@ def run_data_analysis_test(
             # The #STOP# check is now done in the main workflow before calling iteration_control
             # ACE/ALPHA mode uses decision function with simulation_results and feedback
             # Other modes use LLM-based iteration control
-            if args.mode in ["ace", "alpha", "gsim", "random", "srr"]:
+            if workflow_profile and workflow_profile.use_fidelity_stagnation_control:
+                state["iteration_decision"] = falsify_iteration_controller.process(
+                    current_iteration=current_iteration,
+                    max_iterations=args.iterations,
+                    simulation_results=state["simulation_results"],
+                )
+                save_artifact(
+                    args.output,
+                    "falsify_fidelity_history",
+                    falsify_iteration_controller.history,
+                    iteration=current_iteration,
+                )
+                save_artifact(
+                    args.output,
+                    "best_falsify_simulator_info",
+                    state["iteration_decision"]["best_simulator"],
+                    iteration=current_iteration,
+                )
+            elif args.mode in ["ace", "alpha", "gsim", "random", "srr"]:
                 state["iteration_decision"] = agents["iteration_control"].process(
                     current_iteration=current_iteration,
                     max_iterations=args.iterations,
@@ -2208,7 +2522,13 @@ def run_data_analysis_test(
             save_artifact(args.output, f"iteration_decision_iter_{current_iteration}", state["iteration_decision"])
             
             # Save iteration snapshot for playbook (checkpoint level)
-            if playbook_manager and args.mode in ["ace", "alpha"]:
+            if (
+                playbook_manager
+                and (
+                    args.mode == "alpha"
+                    or (workflow_profile and workflow_profile.consume_shared_playbook)
+                )
+            ):
                 playbook_manager.save_iteration_snapshot(current_iteration)
                 logger.info(f"📸 Playbook iteration snapshot saved: iter_{current_iteration:03d}")
             
@@ -2232,9 +2552,36 @@ def run_data_analysis_test(
         else:
             final_iteration = current_iteration
             last_code_iteration = max(current_iteration - 1, 0)
+
+        final_generated_code = state["generated_code"]
+        if (
+            workflow_profile
+            and workflow_profile.use_fidelity_stagnation_control
+            and falsify_iteration_controller.best_iteration is not None
+        ):
+            last_code_iteration = falsify_iteration_controller.best_iteration
+            best_generated_path = os.path.join(
+                args.output, f"generated_code_iter_{last_code_iteration}.json"
+            )
+            if os.path.isfile(best_generated_path):
+                with open(best_generated_path, "r", encoding="utf-8") as handle:
+                    final_generated_code = json.load(handle)
+            state["best_falsify_simulator"] = {
+                "iteration": last_code_iteration,
+                "fidelity_loss": falsify_iteration_controller.best_value,
+                "code_path": os.path.join(
+                    args.output, f"simulation_code_iter_{last_code_iteration}.py"
+                ),
+            }
         
         # Finalize playbook (session level)
-        if playbook_manager and args.mode in ["ace", "alpha"]:
+        if (
+            playbook_manager
+            and (
+                args.mode == "alpha"
+                or (workflow_profile and workflow_profile.consume_shared_playbook)
+            )
+        ):
             final_archive_path = playbook_manager.finalize()
             logger.info(f"📚 Playbook finalized and archived: {final_archive_path}")
         
@@ -2253,11 +2600,22 @@ def run_data_analysis_test(
             "state": state,
             "task_spec": task_spec,
             "data_analysis": data_analysis_result,
-            "generated_code": state["generated_code"],
+            "generated_code": final_generated_code,
             "total_iterations": final_iteration,
             "output_path": args.output
         }
         
+    except LLMCallError as exc:
+        error = exc.to_dict()
+        error["stage"] = "workflow"
+        logger.error("Workflow aborted after structured LLM failure: %s", error)
+        save_artifact(args.output, "workflow_error", error)
+        return {
+            "status": "failed",
+            "error": error,
+            "output_path": args.output,
+        }
+
     except Exception as e:
         logger.error(f"Test failed with error: {e}")
         import traceback
@@ -2280,6 +2638,8 @@ def main():
     
     # Setup logging
     logger = setup_logging(args.output, args.debug)
+    usage_path = configure_llm_usage(args.output, args.mode)
+    logger.info("Per-request LLM usage audit: %s", usage_path)
     
     # Check API key
     if not check_api_key():

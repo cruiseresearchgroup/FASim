@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List, Union
 
 from utils.llm_utils import get_llm_provider
+from utils.llm_usage import llm_usage_scope
 
 class BaseAgent(ABC):
     """
@@ -159,7 +160,8 @@ class BaseAgent(ABC):
         llm_provider = get_llm_provider(llm_config)
         
         # Call the LLM with optional reasoning parameters
-        response = llm_provider.call(prompt, reasoning=reasoning)
+        with llm_usage_scope(agent=self.__class__.__module__):
+            response = llm_provider.call(prompt, reasoning=reasoning)
         return response
     
     def _parse_llm_response(self, response: str) -> Any:
@@ -202,4 +204,4 @@ class BaseAgent(ABC):
         Returns:
             The agent's output
         """
-        pass 
+        pass

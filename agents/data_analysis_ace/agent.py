@@ -12,6 +12,8 @@ import yaml
 
 from agents.base_agent import BaseAgent
 from utils.data_loader import DataLoader
+from utils.llm_utils import LLMCallError
+from utils.schema_sampling import sample_data, sample_schema
 
 class DataAnalysisAgent(BaseAgent):
     """
@@ -186,6 +188,11 @@ class DataAnalysisAgent(BaseAgent):
                 self._get_semantic_summary(file_name, schema, task_description_for_analysis)
                 self.logger.info(f"Successfully generated semantic summary for: {file_name}")
                 
+            except LLMCallError:
+                # An unavailable model is a stage failure, not a missing
+                # optional file summary.  Let the workflow persist the
+                # structured failure and stop cleanly.
+                raise
             except Exception as e:
                 self.logger.error(f"Error generating semantic summary for {file_name}: {e}")
                 # Continue processing other files
@@ -281,10 +288,12 @@ class DataAnalysisAgent(BaseAgent):
             Dictionary mapping file names to their schemas
         """
         schemas = {}
+        self._sampling_task_spec = task_spec
         
         # Check if schemas are directly provided in task_spec
         if "schemas" in task_spec:
-            return task_spec["schemas"]
+            return {name: sample_schema(schema, name, task_spec)
+                    for name, schema in task_spec["schemas"].items()}
         
         # Try to infer schemas from data_files descriptions
         if "data_files" in task_spec:
@@ -296,7 +305,7 @@ class DataAnalysisAgent(BaseAgent):
                         schemas[file_name] = schema
                 # If description is already a structured object with schema
                 elif isinstance(description, dict) and "schema" in description:
-                    schemas[file_name] = description["schema"]
+                    schemas[file_name] = sample_schema(description["schema"], file_name, task_spec)
                     
         return schemas
     
@@ -368,8 +377,8 @@ class DataAnalysisAgent(BaseAgent):
         # Get row count
         row_count = len(df)
         
-        # Get first 10 rows as sample data
-        sample_data = df.head(10).to_dict('records')
+        # Keep five complete rows.
+        sample_data = df.head(5).to_dict('records')
         
         schema = {
             "file_type": "csv",
@@ -404,23 +413,19 @@ class DataAnalysisAgent(BaseAgent):
         # Get length and sample data based on data structure
         if isinstance(data, list):
             data_length = len(data)
-            sample_data = data[:10] if len(data) >= 10 else data
             data_type = "array"
         elif isinstance(data, dict):
             data_length = len(data)
-            # Get first 10 items from dictionary
-            sample_data = dict(list(data.items())[:10])
             data_type = "object"
         else:
             data_length = 1
-            sample_data = data
             data_type = type(data).__name__
         
         schema = {
             "file_type": "json",
             "data_type": data_type,
             "length": data_length,
-            "sample_data": sample_data
+            "sample_data": sample_data(data, file_name, getattr(self, "_sampling_task_spec", {}))
         }
         
         # Add additional structure info for objects and arrays
@@ -430,15 +435,13 @@ class DataAnalysisAgent(BaseAgent):
                 first_key = list(data.keys())[0]
                 first_value = data[first_key]
                 schema["value_structure"] = {
-                    "type": type(first_value).__name__,
-                    "sample_value": first_value
+                    "type": type(first_value).__name__
                 }
         elif isinstance(data, list) and data:
             # Analyze structure of first item in array
             first_item = data[0]
             schema["item_structure"] = {
-                "type": type(first_item).__name__,
-                "sample_item": first_item
+                "type": type(first_item).__name__
             }
         
         self.logger.info(f"JSON schema generated for {file_name}: {data_type} with {data_length} items")
@@ -478,12 +481,12 @@ class DataAnalysisAgent(BaseAgent):
         if isinstance(data, dict):
             schema["data_type"] = "object"
             schema["length"] = len(data)
-            schema["sample_data"] = dict(list(data.items())[:10])
+            schema["sample_data"] = sample_data(data, file_name, getattr(self, "_sampling_task_spec", {}))
             schema["keys"] = list(data.keys())
         elif isinstance(data, list):
             schema["data_type"] = "array"
             schema["length"] = len(data)
-            schema["sample_data"] = data[:10]
+            schema["sample_data"] = sample_data(data, file_name, getattr(self, "_sampling_task_spec", {}))
         else:
             schema["data_type"] = type(data).__name__
             schema["sample_data"] = data

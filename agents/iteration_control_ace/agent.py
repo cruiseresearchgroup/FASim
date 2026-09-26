@@ -24,6 +24,8 @@ import json
 import logging
 from typing import Dict, Any, Optional, List, Tuple
 
+from utils.llm_utils import LLMCallError
+
 from agents.base_agent import BaseAgent
 
 
@@ -326,6 +328,10 @@ IMPORTANT:
             self.logger.info(f"LLM metrics analysis: {len(analysis['primary_metrics'])} primary metrics identified")
             return analysis
             
+        except LLMCallError:
+            # Do not silently replace a failed model decision with heuristics.
+            # API failures must abort this workflow stage.
+            raise
         except Exception as e:
             self.logger.warning(f"LLM metrics analysis failed: {e}, using heuristics")
             # Fallback to heuristic analysis

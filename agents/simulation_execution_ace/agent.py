@@ -11,6 +11,7 @@ import tempfile
 from typing import Dict, Any, Optional, List
 
 from agents.base_agent import BaseAgent
+from orchestration.workflow_profile import get_workflow_profile
 from agents.code_verification.sandbox import DockerSandbox
 
 
@@ -113,6 +114,19 @@ def run_python_script(
                 cmd.extend(["--output_dir", output_file])
             else:
                 cmd.extend(["--output", output_file])
+
+        # Preserve the workflow-selected LLM backend across regenerated
+        # standalone simulators.  A generated argparse default must not
+        # silently downgrade cache-fallback experiments to heuristic mode.
+        inherited_llm_mode = env.get("LLM_EXECUTION_MODE", "").strip().lower()
+        if inherited_llm_mode in {"online", "cache-fallback", "heuristic"}:
+            try:
+                with open(script_file, "r", encoding="utf-8") as handle:
+                    script_source = handle.read()
+            except OSError:
+                script_source = ""
+            if "--llm-mode" in script_source:
+                cmd.extend(["--llm-mode", inherited_llm_mode])
         
         # Execute the Python script
         result = subprocess.run(
@@ -225,7 +239,7 @@ class SimulationExecutionAgent(BaseAgent):
             code_path: Path to the simulation code file
             task_spec: Task specification from the Task Understanding Agent
             data_path: Path to input data (optional)
-            mode: Execution mode ("full", "lite", "ace", or "alpha"). ACE/ALPHA mode uses subprocess like lite mode.
+            mode: Execution mode ("full", "lite", "ace", "falsify", or "alpha"). ACE/FALSIFY/ALPHA mode uses subprocess like lite mode.
             output_dir: Output directory for simulation results (optional, used to generate --output file path)
             iteration: Current iteration number (optional, used to generate output filename)
             project_root: PROJECT_ROOT environment variable value (optional, will use existing env var if not provided)
@@ -235,6 +249,7 @@ class SimulationExecutionAgent(BaseAgent):
             Dictionary containing simulation results
         """
         self.logger.info(f"Executing simulation code in {mode} mode")
+        workflow_profile = get_workflow_profile(mode)
         
         # Read the code file
         try:
@@ -253,9 +268,9 @@ class SimulationExecutionAgent(BaseAgent):
             }
         
         # Choose execution method based on mode
-        # ACE/ALPHA mode and lite mode both use subprocess execution (same as lite mode)
-        if mode == "lite" or mode in ["ace", "alpha"]:
-            # Use direct subprocess execution for lite/ace/alpha mode
+        # ACE/FALSIFY/ALPHA mode and lite mode use subprocess execution.
+        if mode == "lite" or workflow_profile is not None or mode == "alpha":
+            # Use direct subprocess execution for lightweight workflow modes.
             self.logger.info(f"Using subprocess execution for {mode} mode")
             
             # Generate output file/dir path if output_dir and iteration are provided
@@ -288,6 +303,20 @@ class SimulationExecutionAgent(BaseAgent):
                 execution_result = self._execute_code_in_sandbox(code, data_path)
                 if execution_result:
                     return execution_result
+
+        if workflow_profile and not workflow_profile.allow_llm_execution_fallback:
+            return {
+                "execution_status": "failed",
+                "runtime_errors": [
+                    "Real simulator execution was unavailable; LLM execution fallback "
+                    "is forbidden in falsify mode."
+                ],
+                "performance_metrics": {},
+                "simulation_metrics": {},
+                "time_series_data": [],
+                "visualizations": [],
+                "summary": "Falsify mode requires real executable evidence.",
+            }
         
         # Fall back to LLM simulation if execution fails or is unavailable
         self.logger.info("Using LLM to simulate execution")
@@ -940,4 +969,4 @@ TASK SPECIFICATION:
 
 Data Path:
 {data_path}
-""" 
+"""

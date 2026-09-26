@@ -10,6 +10,7 @@ import re
 from typing import Dict, Any, Optional, List
 
 from agents.base_agent import BaseAgent
+from utils.llm_utils import LLMCallError
 
 class FeedbackGenerationAgent(BaseAgent):
     """
@@ -296,11 +297,15 @@ class FeedbackGenerationAgent(BaseAgent):
                     else:
                         self.logger.error(f"Final JSON parsing error in fix check response: {json_err}")
                         self.logger.error(f"Response snippet: {llm_response[:200] if llm_response else 'None'}")
+                except LLMCallError:
+                    raise
                 except Exception as e:
                     if retry < max_retries:
                         self.logger.warning(f"Error processing fix check response (attempt {retry+1}/{max_retries}): {e}")
                     else:
                         self.logger.error(f"Final error processing fix check response: {e}")
+        except LLMCallError:
+            raise
         except Exception as e:
             # 捕获所有异常，防止工作流崩溃
             self.logger.error(f"Error checking fixed issues: {e}")
